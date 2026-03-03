@@ -1,0 +1,31 @@
+{
+  "name": "custom-mail",
+  "version": "1.0.0",
+  "description": "Custom SMTP mail service with CSV support and template rendering",
+  "main": "main.ts",
+  "scripts": {
+    "send": "ts-node main.ts",
+    "send:custom": "ts-node main.ts ./path/to/emails.csv ./path/to/template.html",
+    "generate-sample": "ts-node scripts/generate-samples.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "smtp",
+    "email",
+    "csv",
+    "bulk",
+    "template"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "dotenv": "^16.3.1",
+    "nodemailer": "^6.9.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.6",
+    "@types/nodemailer": "^6.4.14",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
