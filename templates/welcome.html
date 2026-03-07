@@ -1,22 +1,25 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>TetherX – You Qualified!</title>
+    <title>TetherX – Thank You for Participating!</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap');
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
             padding: 0;
             background-color: #07071a;
             background-image:
-                radial-gradient(circle at 15% 20%, rgba(53,214,255,0.12) 0%, transparent 35%),
-                radial-gradient(circle at 85% 10%, rgba(138,70,255,0.16) 0%, transparent 40%),
-                radial-gradient(circle at 75% 85%, rgba(255,79,216,0.14) 0%, transparent 42%);
+                radial-gradient(circle at 15% 20%, rgba(53, 214, 255, 0.12) 0%, transparent 35%),
+                radial-gradient(circle at 85% 10%, rgba(138, 70, 255, 0.16) 0%, transparent 40%),
+                radial-gradient(circle at 75% 85%, rgba(255, 79, 216, 0.14) 0%, transparent 42%);
             font-family: 'Space Grotesk', Arial, sans-serif;
             color: #eaf0ff;
             -webkit-font-smoothing: antialiased;
@@ -44,41 +47,46 @@
             position: relative;
             overflow: hidden;
         }
+
         .header-accent {
             height: 3px;
             background: linear-gradient(90deg, #35d6ff 0%, #8a46ff 40%, #ff4fd8 100%);
         }
+
         .header-inner {
             padding: 20px 32px;
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
+
         .header-logo {
             display: flex;
             align-items: center;
         }
+
         .header-badge {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
             letter-spacing: 2px;
             text-transform: uppercase;
             color: #35d6ff;
-            border: 1px solid rgba(53,214,255,0.4);
+            border: 1px solid rgba(53, 214, 255, 0.4);
             padding: 5px 12px;
             border-radius: 2px;
-            background: rgba(53,214,255,0.1);
+            background: rgba(53, 214, 255, 0.1);
         }
 
         /* ── QUALIFIED STRIP ── */
         .qualified-strip {
-            background: linear-gradient(90deg, rgba(53,214,255,0.08) 0%, rgba(138,70,255,0.2) 50%, rgba(255,79,216,0.08) 100%);
-            border-bottom: 1px solid rgba(138,70,255,0.35);
+            background: linear-gradient(90deg, rgba(53, 214, 255, 0.08) 0%, rgba(138, 70, 255, 0.2) 50%, rgba(255, 79, 216, 0.08) 100%);
+            border-bottom: 1px solid rgba(138, 70, 255, 0.35);
             padding: 12px 32px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
+
         .qualified-dot {
             width: 6px;
             height: 6px;
@@ -87,6 +95,7 @@
             box-shadow: 0 0 8px #35d6ff;
             flex-shrink: 0;
         }
+
         .qualified-text {
             font-family: 'JetBrains Mono', monospace;
             font-size: 11px;
@@ -102,22 +111,29 @@
             position: relative;
             background: #0d0f2b;
         }
+
         .hero::before {
             content: '';
             position: absolute;
-            top: 0; right: 0;
-            width: 240px; height: 240px;
-            background: radial-gradient(circle at top right, rgba(138,70,255,0.28) 0%, transparent 70%);
+            top: 0;
+            right: 0;
+            width: 240px;
+            height: 240px;
+            background: radial-gradient(circle at top right, rgba(138, 70, 255, 0.28) 0%, transparent 70%);
             pointer-events: none;
         }
+
         .hero::after {
             content: '';
             position: absolute;
-            bottom: 0; left: 0;
-            width: 200px; height: 150px;
-            background: radial-gradient(circle at bottom left, rgba(53,214,255,0.2) 0%, transparent 70%);
+            bottom: 0;
+            left: 0;
+            width: 200px;
+            height: 150px;
+            background: radial-gradient(circle at bottom left, rgba(53, 214, 255, 0.2) 0%, transparent 70%);
             pointer-events: none;
         }
+
         .hero-label {
             font-family: 'JetBrains Mono', monospace;
             font-size: 10px;
@@ -126,6 +142,7 @@
             color: #7a89d9;
             margin-bottom: 16px;
         }
+
         .hero-title {
             font-size: 72px;
             font-weight: 700;
@@ -134,9 +151,11 @@
             color: #ffffff;
             margin: 0 0 4px;
         }
+
         .hero-title .x {
             color: #ff4fd8;
         }
+
         .hero-tagline {
             font-family: 'JetBrains Mono', monospace;
             font-size: 12px;
@@ -145,6 +164,7 @@
             color: #7a89d9;
             margin-top: 12px;
         }
+
         .hero-tagline .chaos {
             color: #ff4fd8;
         }
@@ -165,7 +185,9 @@
             font-size: 15px;
             color: #c6d1ff;
             margin: 0 0 8px;
+            margin-bottom: 10px;
         }
+
         .greeting strong {
             color: #ffffff;
             font-weight: 600;
@@ -177,6 +199,7 @@
             color: #9fb0ff;
             margin: 0 0 10px;
         }
+
         .intro .hi {
             color: #35d6ff;
             font-weight: 600;
@@ -188,6 +211,7 @@
             color: #9fb0ff;
             margin: 0 0 28px;
         }
+
         .reg-block .ev {
             color: #ff4fd8;
             font-weight: 600;
@@ -196,7 +220,11 @@
         /* ── CTA ── */
         .cta-wrap {
             margin-bottom: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
+
         .cta {
             display: inline-block;
             background: #35d6ff;
@@ -216,16 +244,18 @@
             display: flex;
             align-items: center;
             gap: 16px;
-            background: rgba(138,70,255,0.14);
-            border: 1px solid rgba(255,79,216,0.38);
+            background: rgba(138, 70, 255, 0.14);
+            border: 1px solid rgba(255, 79, 216, 0.38);
             border-left: 3px solid #ff4fd8;
             border-radius: 2px;
             padding: 16px 20px;
             margin-bottom: 28px;
         }
+
         .deadline-icon {
             font-size: 22px;
         }
+
         .deadline-label {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
@@ -234,12 +264,14 @@
             color: #ff4fd8;
             margin-bottom: 4px;
         }
+
         .deadline-date {
             font-size: 15px;
             font-weight: 700;
             color: #ffffff;
             line-height: 1.2;
         }
+
         .deadline-sub {
             font-size: 11px;
             color: #9fb0ff;
@@ -252,6 +284,7 @@
             gap: 8px;
             margin-bottom: 28px;
         }
+
         .card {
             flex: 1;
             background: #131540;
@@ -261,10 +294,12 @@
             padding: 16px 12px;
             text-align: center;
         }
+
         .card-icon {
             font-size: 18px;
             margin-bottom: 10px;
         }
+
         .card-label {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
@@ -273,12 +308,14 @@
             color: #7a89d9;
             margin-bottom: 6px;
         }
+
         .card-value {
             font-size: 13px;
             font-weight: 700;
             color: #ffffff;
             line-height: 1.3;
         }
+
         .card-sub {
             font-size: 11px;
             color: #7a89d9;
@@ -293,6 +330,7 @@
             padding: 20px 22px;
             margin-bottom: 28px;
         }
+
         .points-title {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
@@ -304,12 +342,14 @@
             align-items: center;
             gap: 8px;
         }
+
         .points-title::after {
             content: '';
             flex: 1;
             height: 1px;
             background: #2b2f6b;
         }
+
         .point-item {
             display: flex;
             gap: 12px;
@@ -317,10 +357,12 @@
             border-bottom: 1px solid #2b2f6b;
             align-items: flex-start;
         }
+
         .point-item:last-child {
             border-bottom: none;
             padding-bottom: 0;
         }
+
         .point-num {
             font-family: 'JetBrains Mono', monospace;
             font-size: 10px;
@@ -329,11 +371,13 @@
             flex-shrink: 0;
             margin-top: 2px;
         }
+
         .point-text {
             font-size: 13px;
             color: #9fb0ff;
             line-height: 1.6;
         }
+
         .point-text strong {
             color: #eaf0ff;
             font-weight: 600;
@@ -347,6 +391,7 @@
             padding: 20px 22px;
             margin-bottom: 0;
         }
+
         .coords-title {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
@@ -358,19 +403,23 @@
             align-items: center;
             gap: 8px;
         }
+
         .coords-title::after {
             content: '';
             flex: 1;
             height: 1px;
             background: #2b2f6b;
         }
+
         .coords-grid {
             display: flex;
             gap: 24px;
         }
+
         .coord-col {
             flex: 1;
         }
+
         .coord-col-title {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
@@ -379,6 +428,7 @@
             color: #ff4fd8;
             margin-bottom: 8px;
         }
+
         .coord-name {
             font-size: 12px;
             color: #9fb0ff;
@@ -392,9 +442,11 @@
             padding: 20px 32px;
             text-align: center;
         }
+
         .footer-top {
             margin-bottom: 8px;
         }
+
         .footer-brand {
             font-family: 'JetBrains Mono', monospace;
             font-size: 9px;
@@ -402,11 +454,13 @@
             text-transform: uppercase;
             color: #5f6cb3;
         }
+
         .footer p {
             margin: 4px 0;
             font-size: 11px;
             color: #5f6cb3;
         }
+
         .social-links {
             margin: 12px 0 10px;
             display: flex;
@@ -414,6 +468,7 @@
             gap: 8px;
             flex-wrap: wrap;
         }
+
         .social-link {
             display: inline-block;
             padding: 7px 12px;
@@ -427,6 +482,7 @@
             background: #131540;
             border-radius: 2px;
         }
+
         .social-icon {
             display: inline-block;
             min-width: 16px;
@@ -439,26 +495,31 @@
             margin-right: 6px;
             vertical-align: middle;
         }
+
         .insta-btn {
             color: #ffd8f8;
             border-color: #b84dff;
             background: linear-gradient(135deg, #5b2be0 0%, #d62976 55%, #f58529 100%);
         }
+
         .insta-btn .social-icon {
             color: #ffffff;
-            background: rgba(255,255,255,0.22);
-            border: 1px solid rgba(255,255,255,0.45);
+            background: rgba(255, 255, 255, 0.22);
+            border: 1px solid rgba(255, 255, 255, 0.45);
         }
+
         .linkedin-btn {
             color: #dff4ff;
             border-color: #0a66c2;
             background: linear-gradient(135deg, #004182 0%, #0a66c2 100%);
         }
+
         .linkedin-btn .social-icon {
             color: #0a66c2;
             background: #ffffff;
-            border: 1px solid rgba(255,255,255,0.8);
+            border: 1px solid rgba(255, 255, 255, 0.8);
         }
+
         .social-link:hover {
             color: #07071a;
             background: #35d6ff;
@@ -470,6 +531,7 @@
             .wrapper {
                 padding: 16px 8px;
             }
+
             .header-inner,
             .qualified-strip,
             .hero,
@@ -478,52 +540,66 @@
                 padding-left: 16px !important;
                 padding-right: 16px !important;
             }
+
             .header-inner {
                 flex-direction: column;
                 align-items: flex-start;
                 gap: 10px;
             }
+
             .hero {
                 padding-top: 32px !important;
                 padding-bottom: 28px !important;
             }
+
             .hero-title {
                 font-size: 48px !important;
                 letter-spacing: -1px;
             }
+
             .hero-tagline {
                 letter-spacing: 2px;
                 font-size: 11px;
             }
+
             .sep {
                 margin: 0 16px;
             }
+
             .cards {
                 display: block;
             }
+
             .card {
                 margin-bottom: 10px;
             }
+
             .card:last-child {
                 margin-bottom: 0;
             }
+
             .coords-grid {
                 display: block;
             }
-            .coord-col + .coord-col {
+
+            .coord-col+.coord-col {
                 margin-top: 14px;
             }
+
             .deadline-box {
                 gap: 12px;
                 padding: 14px 14px;
             }
+
             .deadline-date {
                 font-size: 14px;
                 line-height: 1.35;
             }
+
             .social-links {
                 gap: 6px;
             }
+
             .social-link {
                 font-size: 9px;
                 padding: 7px 10px;
@@ -534,9 +610,11 @@
             .hero-title {
                 font-size: 42px !important;
             }
+
             .footer-brand {
                 letter-spacing: 1.5px;
             }
+
             .social-link {
                 display: block;
                 width: 100%;
@@ -545,144 +623,185 @@
         }
     </style>
 </head>
+
 <body>
-<div class="wrapper">
-    <div class="container">
+    <div class="wrapper">
+        <div class="container">
 
-        <!-- HEADER -->
-        <div class="header">
-            <div class="header-accent"></div>
-            <div class="header-inner">
-                <div class="header-logo">
-                    <div style="font-family:JetBrains Mono,monospace;font-size:14px;letter-spacing:2px;color:#35d6ff;text-transform:uppercase;font-weight:700;">CodeChef VIT Chennai</div>
+            <!-- HEADER -->
+            <div class="header">
+                <div class="header-accent"></div>
+                <div class="header-inner">
+                    <div class="header-logo">
+                        <div
+                            style="font-family:JetBrains Mono,monospace;font-size:14px;letter-spacing:2px;color:#35d6ff;text-transform:uppercase;font-weight:700;">
+                            CodeChef VIT Chennai</div>
+                    </div>
+                    <div class="header-badge">A Hackathon Like No Other</div>
                 </div>
-                <div class="header-badge">A Hackathon Like No Other</div>
-            </div>
-        </div>
-
-        <!-- QUALIFIED STRIP -->
-        <div class="qualified-strip">
-            <div class="qualified-dot"></div>
-            <div class="qualified-text">✓ &nbsp; Round 1 Cleared — You Qualified for Round 2</div>
-        </div>
-
-        <!-- HERO -->
-        <div class="hero">
-            <div class="hero-label">// CodeChef VITC Presents</div>
-            <div class="hero-title">Tether<span class="x">X</span></div>
-            <div class="hero-tagline">Order &nbsp;·&nbsp; <span class="chaos">Chaos</span></div>
-        </div>
-
-        <div class="sep"></div>
-
-        <!-- BODY -->
-        <div class="body">
-
-            <p class="greeting">Dear <strong>{{fullName}}</strong>,</p>
-
-            <p class="intro">
-                Congratulations on successfully clearing the first round of
-                <span class="hi">CodeChef VITC's TetherX: Order and Chaos!</span>
-            </p>
-
-            <p class="reg-block">
-                To continue your participation, please register your team on the portal below by searching for the contest named
-                <span class="ev">"TetherX"</span>:
-            </p>
-
-            <!-- CTA -->
-            <div class="cta-wrap">
-                <a href="https://eventhubcc.vit.ac.in/EventHub/mainDashboard" class="cta">Register on EventHub →</a>
             </div>
 
-            <!-- DEADLINE -->
-            <div class="deadline-box">
+            <!-- QUALIFIED STRIP -->
+            <div class="qualified-strip">
+                <div class="qualified-dot"></div>
+                <div class="qualified-text">✓ &nbsp; TetherX Complete — Thank You for Participating!</div>
+            </div>
+
+            <!-- HERO -->
+            <div class="hero">
+                <div class="hero-label">// CodeChef VITC Presents</div>
+                <div class="hero-title">Tether<span class="x">X</span></div>
+                <div class="hero-tagline">Order &nbsp;·&nbsp; <span class="chaos">Chaos</span></div>
+            </div>
+
+            <div class="sep"></div>
+
+            <!-- BODY -->
+            <div class="body">
+
+                <p class="greeting">Dear Team <strong>{{teamName}}</strong>,</p>
+
+                <p class="intro">
+                    <strong>Thank you for participating in</strong>
+                    <span class="hi">CodeChef VITC's TetherX: Order and Chaos!</span>
+                </p>
+
+                <p class="reg-block">
+                    Your participation certificates will be issued through the EventHub portal within
+                    <span class="ev">1 week</span>. You can access them by logging in and searching for the contest named
+                    <span class="ev">"TetherX"</span>:
+                </p>
+
+                <!-- CTA -->
+                <div class="cta-wrap">
+                    <a href="https://eventhubcc.vit.ac.in/EventHub/mainDashboard" class="cta">Access Certificates on EventHub →</a>
+                </div>
+
+                <!-- DEADLINE -->
+                <!-- <div class="deadline-box">
                 <div class="deadline-icon">⏰</div>
                 <div>
                     <div class="deadline-label">Registration Deadline</div>
                     <div class="deadline-date">4:00 PM — 4th March 2026 (Wednesday)</div>
                     <div class="deadline-sub">Registration must be completed by this time</div>
                 </div>
-            </div>
+            </div> -->
 
-            <!-- DETAIL CARDS -->
-            <div class="cards">
-                <div class="card">
-                    <div class="card-icon">📅</div>
-                    <div class="card-label">Event Date</div>
-                    <div class="card-value">March 6, 2026</div>
-                    <div class="card-sub">09:00 AM onwards</div>
+                <!-- Team Details -->
+                <div class="points-box" style="margin-bottom: 28px;">
+                    <div class="points-title">Team Details</div>
+                    <div class="point-item">
+                        <div class="point-num">🔹</div>
+                        <div class="point-text"><strong>Team Name:</strong> {{teamName}}</div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-num">🎯</div>
+                        <div class="point-text"><strong>Track:</strong> {{track}}</div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-num">👤</div>
+                        <div class="point-text"><strong>Team Lead:</strong> {{leadName}}</div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-num">👤</div>
+                        <div class="point-text"><strong>Member 2:</strong> {{member2}}</div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-num">👤</div>
+                        <div class="point-text"><strong>Member 3:</strong> {{member3}}</div>
+                    </div>
+                    {{#member4}}<div class="point-item">
+                        <div class="point-num">👤</div>
+                        <div class="point-text"><strong>Member 4:</strong> {{member4}}</div>
+                    </div>{{/member4}}
                 </div>
-                <div class="card">
-                    <div class="card-icon">📍</div>
-                    <div class="card-label">Venue</div>
-                    <div class="card-value">NETHAJI Audi</div>
-                    <div class="card-sub">AB1 – 7th Floor, VIT Chennai</div>
-                </div>
-                <div class="card">
-                    <div class="card-icon">👥</div>
-                    <div class="card-label">Your Team</div>
-                    <div class="card-value">{{teamName}}</div>
-                    <div class="card-sub">3 – 4 Participants</div>
-                </div>
-            </div>
 
-            <!-- IMPORTANT POINTS -->
-            <div class="points-box">
-                <div class="points-title">Important Points</div>
-                <div class="point-item">
-                    <div class="point-num">01</div>
-                    <div class="point-text">To avail <strong>certificates</strong>, all team members <strong>MUST</strong> be registered on the portal before the deadline.</div>
-                </div>
-                <div class="point-item">
-                    <div class="point-num">02</div>
-                    <div class="point-text">Entry requires an <strong>invoice screenshot</strong> from EventHub as proof of registration for each team member.</div>
-                </div>
-                <div class="point-item">
-                    <div class="point-num">03</div>
-                    <div class="point-text">All <strong>external participants</strong> must wear their ID cards at all times during the event.</div>
-                </div>
-                <div class="point-item">
-                    <div class="point-num">04</div>
-                    <div class="point-text">All participants must bring their own <strong>power strips / extension boxes</strong>.</div>
-                </div>
-            </div>
+                <!-- DETAIL CARDS -->
+                <!-- <div class="cards">
+                    <div class="card">
+                        <div class="card-icon">🎓</div>
+                        <div class="card-label">Certificates</div>
+                        <div class="card-value">Within 1 Week</div>
+                        <div class="card-sub">Via EventHub Portal</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">📍</div>
+                        <div class="card-label">Venue</div>
+                        <div class="card-value">NETHAJI Audi</div>
+                        <div class="card-sub">AB1 – 7th Floor, VIT Chennai</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-icon">👥</div>
+                        <div class="card-label">Your Team</div>
+                        <div class="card-value">{{teamName}}</div>
+                        <div class="card-sub">3 – 4 Participants</div>
+                    </div>
+                </div> -->
 
-            <!-- COORDINATORS -->
-            <div class="coords-box">
-                <div class="coords-title">Coordinators</div>
-                <div class="coords-grid">
-                    <div class="coord-col">
-                        <div class="coord-col-title">Student</div>
-                        <div class="coord-name">
-                            Gautham R &nbsp;·&nbsp; 7305044165<br>
-                            Shrinikhaythan &nbsp;·&nbsp; 9080586098
+                <!-- IMPORTANT POINTS -->
+                <div class="points-box">
+                    <div class="points-title">Important Points</div>
+                    <div class="point-item">
+                        <div class="point-num">01</div>
+                        <div class="point-text">Your <strong>participation certificate</strong> will be available on the EventHub portal within <strong>1 week</strong> of the event.
                         </div>
                     </div>
-                    <div class="coord-col">
-                        <div class="coord-col-title">Faculty</div>
-                        <div class="coord-name">Shridevi S</div>
+                    <div class="point-item">
+                        <div class="point-num">02</div>
+                        <div class="point-text">All team members who were <strong>registered on the portal</strong> will receive their certificates automatically.</div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-num">03</div>
+                        <div class="point-text">For any queries regarding <strong>certificates</strong>, please reach out to the coordinators listed below.</div>
+                    </div>
+                    <div class="point-item">
+                        <div class="point-num">04</div>
+                        <div class="point-text">Follow us on social media to stay updated on future <strong>events and opportunities</strong>.</div>
                     </div>
                 </div>
+
+                <!-- COORDINATORS -->
+                <div class="coords-box">
+                    <div class="coords-title">Coordinators</div>
+                    <div class="coords-grid">
+                        <div class="coord-col">
+                            <div class="coord-col-title">Student</div>
+                            <div class="coord-name">
+                                Gautham R &nbsp;·&nbsp; 7305044165<br>
+                                Shrinikhaythan &nbsp;·&nbsp; 9080586098
+                            </div>
+                        </div>
+                        <!-- <div class="coord-col">
+                            <div class="coord-col-title">Faculty</div>
+                            <div class="coord-name">Shridevi S</div>
+                        </div> -->
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- FOOTER -->
+            <div class="footer">
+                <div class="footer-top">
+                    <div class="footer-brand">CodeChef VIT Chennai &nbsp;&nbsp;</div>
+                </div>
+                <div class="social-links">
+                    <a class="social-link insta-btn"
+                        href="https://www.instagram.com/cc_vitc_projectx?igsh=cjlleWkweDY3Mndk" target="_blank"
+                        rel="noopener noreferrer">TetherX</a>
+                    <a class="social-link insta-btn"
+                        href="https://www.instagram.com/codechef.vitc?igsh=MTRvOXJ1eGw0ZnVxOQ==" target="_blank"
+                        rel="noopener noreferrer">CodeChef Official</a>
+                    <a class="social-link linkedin-btn"
+                        href="https://www.linkedin.com/company/codechef-vit-chennai-chapter/" target="_blank"
+                        rel="noopener noreferrer">LinkedIn</a>
+                </div>
+                <p>© 2026 VIT Chennai. All rights reserved.</p>
+                <p>This is an automated email. Please do not reply to this email.</p>
             </div>
 
         </div>
-
-        <!-- FOOTER -->
-        <div class="footer">
-            <div class="footer-top">
-                <div class="footer-brand">CodeChef VIT Chennai &nbsp;&nbsp;</div>
-            </div>
-            <div class="social-links">
-                <a class="social-link insta-btn" href="https://www.instagram.com/cc_vitc_projectx?igsh=cjlleWkweDY3Mndk" target="_blank" rel="noopener noreferrer">TetherX</a>
-                <a class="social-link insta-btn" href="https://www.instagram.com/codechef.vitc?igsh=MTRvOXJ1eGw0ZnVxOQ==" target="_blank" rel="noopener noreferrer">CodeChef Official</a>
-                <a class="social-link linkedin-btn" href="https://www.linkedin.com/company/codechef-vit-chennai-chapter/" target="_blank" rel="noopener noreferrer">LinkedIn</a>
-            </div>
-            <p>© 2026 VIT Chennai. All rights reserved.</p>
-            <p>This is an automated invite. Please do not reply to this email.</p>
-        </div>
-
     </div>
-</div>
 </body>
+
 </html>

@@ -18,16 +18,19 @@ export function loadTemplate(templatePath: string): string {
 export function renderTemplate(template: string, data: TemplateData): string {
     let rendered = template;
 
+    rendered = rendered.replace(/\{\{#(\w+)\}\}([\s\S]*?)\{\{\/\1\}\}/g, (_, key, content) => {
+        const value = data[key];
+        return value && String(value).trim() !== '' ? content : '';
+    });
+
     // Replace all {{variable}} patterns
     Object.entries(data).forEach(([key, value]) => {
         const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
         rendered = rendered.replace(regex, String(value));
     });
 
-    const unresolvedVars = rendered.match(/\{\{[^}]+\}\}/g);
-    if (unresolvedVars) {
-        console.warn(`⚠️  Unresolved template variables: ${unresolvedVars.join(', ')}`);
-    }
+    // Replace any remaining unresolved variables with empty string
+    rendered = rendered.replace(/\{\{[^}]+\}\}/g, '');
 
     return rendered;
 }
