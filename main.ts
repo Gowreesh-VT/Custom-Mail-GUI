@@ -29,24 +29,24 @@ async function main() {
     const isConnected = await mailService.verifyConnection();
 
     if (!isConnected) {
-        console.error('❌ Failed to connect to SMTP server');
+        console.error('Failed to connect to SMTP server');
         process.exit(1);
     }
 
-    console.log('✅ SMTP connection verified!\n');
+    console.log('SMTP connection verified!\n');
 
     const csvPath = process.argv[2] || './emails.csv';
     const htmlTemplatePath = process.argv[3] || './templates/welcome.html';
 
     if (!fs.existsSync(csvPath)) {
-        console.error(`❌ CSV file not found: ${csvPath}`);
-        console.error(`📝 Create a CSV file with columns: email, leadName, teamName, track, member2, member3, member4\n`);
+        console.error(`CSV file not found: ${csvPath}`);
+        console.error(`Create a CSV file with columns: email, leadName, teamName, track, member2, member3, member4\n`);
         process.exit(1);
     }
 
     if (!fs.existsSync(htmlTemplatePath)) {
-        console.error(`❌ Template file not found: ${htmlTemplatePath}`);
-        console.error(`📝 Add your HTML template at that path and try again.`);
+        console.error(`Template file not found: ${htmlTemplatePath}`);
+        console.error(`Add your HTML template at that path and try again.`);
         process.exit(1);
     }
 
@@ -59,7 +59,7 @@ async function main() {
         });
 
         if (results.failed.length > 0) {
-            console.log('\n⚠️  Failed emails:');
+            console.log('\nFailed emails:');
             results.failed.forEach(item => {
                 console.log(`   - ${item.email}: ${item.error}`);
             });
@@ -67,7 +67,7 @@ async function main() {
 
         process.exit(results.failed.length > 0 ? 1 : 0);
     } catch (error: any) {
-        console.error('❌ Error:', error.message);
+        console.error('Error:', error.message);
         process.exit(1);
     }
 }

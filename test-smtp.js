@@ -36,14 +36,14 @@ const transporter = nodemailer.createTransport({
 console.log('Test 1: Verifying SMTP connection...');
 transporter.verify(function (error, success) {
     if (error) {
-        console.log('❌ Connection failed:', error.message);
+        console.log('Connection failed:', error.message);
         console.log('\nPossible fixes:');
         console.log('1. Check if SMTP_USER matches your Zoho email');
         console.log('2. Generate App Password if 2FA is enabled');
         console.log('3. Enable IMAP/SMTP in Zoho Mail settings');
         process.exit(1);
     } else {
-        console.log('✅ SMTP connection verified!\n');
+        console.log('SMTP connection verified!\n');
 
         console.log('Test 2: Sending test email...');
         const mailOptions = {
@@ -61,10 +61,10 @@ transporter.verify(function (error, success) {
 
         transporter.sendMail(mailOptions, (error, info) => {
             if (error) {
-                console.log('❌ Email send failed:', error.message);
+                console.log('Email send failed:', error.message);
                 process.exit(1);
             } else {
-                console.log('✅ Test email sent successfully!');
+                console.log('Test email sent successfully!');
                 console.log('Message ID:', info.messageId);
                 console.log('\nCheck your inbox:', process.env.SMTP_USER);
                 process.exit(0);

@@ -49,6 +49,7 @@ export class MailService {
         }
     }
 
+    
     async sendEmail(
         recipientEmail: string,
         templateData: TemplateData,
@@ -113,7 +114,7 @@ export class MailService {
                 failed: [] as Array<{ email: string; error: string }>,
             };
 
-            console.log(`\n📧 Sending to ${records.length} recipient(s)...\n`);
+            console.log(`\nSending to ${records.length} recipient(s)...\n`);
 
             for (let i = 0; i < records.length; i++) {
                 const record = records[i];
