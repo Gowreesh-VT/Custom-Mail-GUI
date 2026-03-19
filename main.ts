@@ -53,7 +53,7 @@ async function main() {
     // Send bulk emails
     try {
         const results = await mailService.sendBulkFromCSV(csvPath, {
-            subject: 'TetherX: Order & Chaos — You\'re Invited 🚀',
+            subject: 'TetherX Prize: .xyz Domain Allocation Instructions',
             htmlTemplatePath,
             generatePassword: false, // Toggle to Generate passwords
         });
