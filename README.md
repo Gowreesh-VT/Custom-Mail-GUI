@@ -1,16 +1,41 @@
-# Custom SMTP Mail Service
+# Custom Mail
 
-A flexible TypeScript-based email service for sending bulk emails via SMTP with CSV support and HTML/Text templating.
+TypeScript-based SMTP bulk mail sender that reads recipients from CSV and renders HTML/text templates with placeholder variables.
 
-## Features
+## What It Does
 
-✅ SMTP Email Service  
-✅ CSV Parsing (email, fullName, custom fields)  
-✅ Template Rendering (HTML & Text)  
-✅ Bulk Email Sending  
-✅ Password Generation  
-✅ Error Handling & Logging  
-✅ Rate Limiting  
+- Verifies SMTP connectivity before sending.
+- Parses CSV input and validates email addresses.
+- Renders templates using CSV column values (for example `{{teamName}}`, `{{leadName}}`).
+- Supports optional conditional template blocks:
+  - `{{#fieldName}}...{{/fieldName}}` renders only when the field is present and non-empty.
+- Sends to all valid recipients with per-email logging.
+- Can optionally generate per-recipient secure passwords and expose them as `{{password}}`.
+
+## Repository Structure
+
+```text
+.
+├── .env.example
+├── csvParser.ts
+├── emails.csv
+├── mailService.ts
+├── main.ts
+├── sender.ts
+├── templateManager.ts
+├── test-smtp.js
+├── templates/
+│   └── welcome.html
+├── package.json
+├── tsconfig.json
+├── LICENSE
+└── README.md
+```
+
+## Requirements
+
+- Node.js 18+ recommended
+- npm
 
 ## Installation
 
@@ -18,193 +43,141 @@ A flexible TypeScript-based email service for sending bulk emails via SMTP with 
 npm install
 ```
 
-## Setup
+## Environment Setup
 
-### 1. Configure Environment Variables
+Create a `.env` file in project root:
 
-Create a `.env` file (copy from `.env.example`):
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=you@example.com
+SMTP_PASSWORD=your-app-password
+SMTP_FROM_EMAIL=noreply@example.com
+SMTP_FROM_NAME=Your Name or Organization
+```
+
+You can copy from:
 
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` with your SMTP credentials:
+## CSV Format
 
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=your-email@gmail.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=noreply@example.com
-SMTP_FROM_NAME=Your Company
-```
+Your CSV must include an `email` column.
 
-**For Gmail Users:**
-1. Enable 2-Step Verification in your Google Account
-2. Visit: https://myaccount.google.com/apppasswords
-3. Generate an app password for "Mail"
-4. Use this password in `SMTP_PASSWORD`
-
-### 2. Prepare CSV File
-
-Create `emails.csv` with email addresses:
+Current repository examples (`emails.csv`) use:
 
 ```csv
-email,fullName
-john@example.com,John Doe
-jane@example.com,Jane Smith
-bob@example.com,Bob Johnson
+email,leadName,teamName,track,member2,member3,member4
 ```
 
-**Required columns:** `email`  
-**Optional columns:** `fullName` or any custom field
+Notes:
+- Invalid email rows are skipped.
+- If all rows are invalid (or CSV is empty), sending fails.
+- Any header can be used in templates as `{{headerName}}`.
 
-### 3. Create Email Template
+## Template Format
 
-Create `templates/welcome.html`:
+Default template path used by CLI:
+
+```text
+templates/welcome.html
+```
+
+Variable examples:
 
 ```html
-<!DOCTYPE html>
-<html>
-<body>
-    <h1>Welcome {{fullName}}!</h1>
-    <p>Your email is: {{email}}</p>
-    <p>Thank you for signing up!</p>
-</body>
-</html>
+<p>Dear Team {{teamName}},</p>
+<p>Lead: {{leadName}}</p>
 ```
 
-**Template Variables:**
-- `{{email}}` - Recipient's email
-- `{{fullName}}` - Recipient's full name
-- Any custom CSV column name in `{{columnName}}` format
+Conditional block example:
 
-## Usage
+```html
+{{#member4}}<p>Member 4: {{member4}}</p>{{/member4}}
+```
 
-### Basic Send
+## Running the Sender
+
+### Default input files
+
+Uses:
+- CSV: `./emails.csv`
+- Template: `./templates/welcome.html`
 
 ```bash
 npm run send
 ```
 
-Uses default paths:
-- CSV: `./emails.csv`
-- Template: `./templates/welcome.html`
+### Custom CSV and template paths
 
-### Custom Paths
+`main.ts` supports positional args:
 
 ```bash
-npm run send:custom ./path/to/emails.csv ./path/to/template.html
+npm run send -- ./secondary.csv ./templates/welcome.html
+```
+
+## Script Reference
+
+From `package.json`:
+
+- `npm run send` - runs `ts-node main.ts`
+- `npm run send:custom` - runs `ts-node main.ts ./path/to/emails.csv ./path/to/template.html` (example placeholder command)
+- `npm test` - placeholder script (currently exits with error)
+
+Note:
+- `generate-sample` exists in `package.json` but points to `scripts/generate-samples.ts`, which is not present in this repository.
+
+## SMTP Test Utility
+
+`test-smtp.js` is a standalone SMTP test helper.
+
+Important:
+- It reads `.env.local` (not `.env`).
+- It checks connection and sends a test email to `SMTP_USER`.
+
+Run manually:
+
+```bash
+node test-smtp.js
 ```
 
 ## Programmatic Usage
 
-```typescript
+```ts
 import { MailService } from './mailService';
 
 const mailService = new MailService({
-    smtpHost: 'smtp.gmail.com',
-    smtpPort: 587,
-    smtpUser: 'your-email@gmail.com',
-    smtpPassword: 'your-password',
-    fromEmail: 'noreply@example.com',
-    fromName: 'Your Company',
+  smtpHost: process.env.SMTP_HOST!,
+  smtpPort: Number(process.env.SMTP_PORT || 587),
+  smtpUser: process.env.SMTP_USER!,
+  smtpPassword: process.env.SMTP_PASSWORD!,
+  fromEmail: process.env.SMTP_FROM_EMAIL!,
+  fromName: process.env.SMTP_FROM_NAME || 'Mailer',
 });
 
-// Send bulk emails
-const results = await mailService.sendBulkFromCSV(
-    './emails.csv',
-    {
-        subject: 'Welcome!',
-        htmlTemplatePath: './templates/welcome.html',
-    },
-    { rateLimitMs: 100 }
-);
+const connected = await mailService.verifyConnection();
+if (!connected) throw new Error('SMTP verification failed');
 
-console.log(`Sent: ${results.sent}/${results.total}`);
+await mailService.sendBulkFromCSV('./emails.csv', {
+  subject: 'Your Subject Here',
+  htmlTemplatePath: './templates/welcome.html',
+}, {
+  rateLimitMs: 100,
+  generatePassword: false,
+});
 ```
 
-## File Structure
+## Behavior Summary
 
-```
-├── sender.ts              # SMTP transporter & credentials sending
-├── csvParser.ts           # CSV file parsing utilities
-├── templateManager.ts     # Template loading & rendering
-├── mailService.ts         # Main mail service class
-├── main.ts               # CLI entry point
-├── package.json          # Dependencies
-├── tsconfig.json         # TypeScript config
-├── .env.example          # Environment template
-├── emails.csv            # Your email list (not included)
-└── templates/            # Email templates directory
-    └── welcome.html      # Your email template
-```
-
-## Password Generation
-
-To auto-generate passwords for each recipient:
-
-```typescript
-const results = await mailService.sendBulkFromCSV(
-    './emails.csv',
-    { subject: 'Welcome!', htmlTemplatePath: './templates/welcome.html' },
-    { generatePassword: true }
-);
-```
-
-Use `{{password}}` in your template to insert the generated password.
-
-## Error Handling
-
-The service logs all errors and continues processing remaining recipients:
-
-```
-✅ Successfully sent: 98
-❌ Failed: 2
-
-⚠️  Failed emails:
-   - invalid@email: Invalid email format
-   - failed@example.com: Connection timeout
-```
-
-## Advanced
-
-### Custom Template Variables
-
-Add any columns to your CSV and use them in templates:
-
-```csv
-email,fullName,company,productUrl
-john@example.com,John Doe,Acme Inc,https://acme.com
-```
-
-```html
-<p>Hello {{fullName}} from {{company}}</p>
-<p>Check out: {{productUrl}}</p>
-```
-
-### Send with Text Template
-
-```typescript
-await mailService.sendEmail('user@example.com', 
-    { fullName: 'John', email: 'john@example.com' },
-    {
-        subject: 'Welcome!',
-        htmlTemplatePath: './templates/welcome.html',
-        textTemplatePath: './templates/welcome.txt'
-    }
-);
-```
-
-## Troubleshooting
-
-**Connection refused:** Check SMTP credentials and `SMTP_HOST`/`SMTP_PORT`
-
-**Invalid email:** Ensure all emails in CSV are valid
-
-**Template not found:** Check file paths are correct
-
-**Gmail not working:** Verify app password is generated and 2-Step Verification is enabled
+- `main.ts` exits with non-zero status when:
+  - required SMTP env vars are missing,
+  - SMTP verification fails,
+  - input CSV/template file does not exist,
+  - at least one email fails to send.
+- Subject is currently hardcoded in `main.ts` as:
+  - `TetherX Prize: .xyz Domain Allocation Instructions`
 
 ## License
 
