@@ -81,9 +81,11 @@ Notes:
 
 Default template path used by CLI:
 
+
 ```text
 templates/welcome.html
 ```
+
 
 Variable examples:
 
@@ -98,8 +100,8 @@ Conditional block example:
 {{#member4}}<p>Member 4: {{member4}}</p>{{/member4}}
 ```
 
-## Running the Sender
 
+## Running the Sender
 ### Default input files
 
 Uses:
@@ -180,5 +182,4 @@ await mailService.sendBulkFromCSV('./emails.csv', {
   - `TetherX Prize: .xyz Domain Allocation Instructions`
 
 ## License
-
 MIT
