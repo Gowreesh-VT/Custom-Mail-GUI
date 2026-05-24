@@ -1,11 +1,11 @@
 # Custom Mail
 
-Custom Mail includes a Next.js App Router email client UI plus a standalone CSV-based bulk sender. The UI handles per-user SMTP configs stored in MongoDB, and the bulk sender renders HTML templates from `templates/` for one-off batch sends.
+Custom Mail includes a Next.js App Router email client UI plus a standalone CSV-based bulk sender. The UI handles per-user SMTP configs stored in PostgreSQL, and the bulk sender renders HTML templates from `templates/` for one-off batch sends.
 
 ## Features
 
 - Multi-user signup/login with access + refresh JWTs in httpOnly cookies.
-- Per-user SMTP settings stored in MongoDB with AES-256-GCM encrypted SMTP passwords.
+- Per-user SMTP settings stored in PostgreSQL with AES-256-GCM encrypted SMTP passwords.
 - SMTP connection testing with health history.
 - Rich Tiptap composer with visual/raw HTML modes, preview, drafts, templates, scheduling, and send-now.
 - Sent history, draft list, template library, scheduled queue, bulk CSV mail merge, and monitor dashboard.
@@ -17,7 +17,11 @@ Custom Mail includes a Next.js App Router email client UI plus a standalone CSV-
 Create `.env` from `.env.example` and set the values:
 
 ```env
-MONGODB_URI=mongodb://127.0.0.1:27017/custom-mail
+DATABASE_URL=postgresql://user:password@ep-xxx.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=15
+DATABASE_URL_UNPOOLED=postgresql://user:password@ep-xxx.neon.tech/neondb?sslmode=require
+UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
+UPSTASH_REDIS_REST_TOKEN=xxx
+REDIS_URL=rediss://default:<token>@<host>.upstash.io:6379
 JWT_ACCESS_SECRET=replace-with-a-long-random-secret
 JWT_REFRESH_SECRET=replace-with-another-long-random-secret
 ENCRYPTION_SECRET=replace-with-a-long-random-secret
@@ -45,7 +49,7 @@ SMTP_FROM_NAME=Your Name
 4. Run the dev server: `npm run dev`.
 5. Open the forwarded port 3000.
 
-If you are using MongoDB Atlas, set `MONGODB_URI` to your Atlas connection string.
+Set the Neon and Upstash values before running migrations or the scheduler.
 
 ## Run
 
@@ -99,4 +103,4 @@ Example inputs:
 
 - HTML templates live under `templates/` for batch sending and reference.
 - Attachments uploaded through the API are stored locally under `uploads/<userId>/`.
-- Agenda uses the same MongoDB database and stores jobs in the `agendaJobs` collection.
+- BullMQ stores scheduled jobs in Redis and the app stores scheduled-email state in PostgreSQL.
