@@ -1,185 +1,102 @@
 # Custom Mail
 
-TypeScript-based SMTP bulk mail sender that reads recipients from CSV and renders HTML/text templates with placeholder variables.
+Custom Mail includes a Next.js App Router email client UI plus a standalone CSV-based bulk sender. The UI handles per-user SMTP configs stored in MongoDB, and the bulk sender renders HTML templates from `templates/` for one-off batch sends.
 
-## What It Does
+## Features
 
-- Verifies SMTP connectivity before sending.
-- Parses CSV input and validates email addresses.
-- Renders templates using CSV column values (for example `{{teamName}}`, `{{leadName}}`).
-- Supports optional conditional template blocks:
-  - `{{#fieldName}}...{{/fieldName}}` renders only when the field is present and non-empty.
-- Sends to all valid recipients with per-email logging.
-- Can optionally generate per-recipient secure passwords and expose them as `{{password}}`.
+- Multi-user signup/login with access + refresh JWTs in httpOnly cookies.
+- Per-user SMTP settings stored in MongoDB with AES-256-GCM encrypted SMTP passwords.
+- SMTP connection testing with health history.
+- Rich Tiptap composer with visual/raw HTML modes, preview, drafts, templates, scheduling, and send-now.
+- Sent history, draft list, template library, scheduled queue, bulk CSV mail merge, and monitor dashboard.
+- Monitor stats, send-volume chart, failed-email retry/dismiss actions, and SSE activity stream with polling behavior.
+- Tailwind/shadcn component system with tweakcn-style CSS variables in `app/globals.css`.
 
-## Repository Structure
+## Environment
 
-```text
-.
-├── .env.example
-├── csvParser.ts
-├── emails.csv
-├── mailService.ts
-├── main.ts
-├── sender.ts
-├── templateManager.ts
-├── test-smtp.js
-├── templates/
-│   └── welcome.html
-├── package.json
-├── tsconfig.json
-├── LICENSE
-└── README.md
+Create `.env` from `.env.example` and set the values:
+
+```env
+MONGODB_URI=mongodb://127.0.0.1:27017/custom-mail
+JWT_ACCESS_SECRET=replace-with-a-long-random-secret
+JWT_REFRESH_SECRET=replace-with-another-long-random-secret
+ENCRYPTION_SECRET=replace-with-a-long-random-secret
+NEXT_PUBLIC_APP_URL=http://localhost:3000
 ```
 
-## Requirements
+`ENCRYPTION_SECRET` is hashed to a 256-bit key and used only for SMTP password encryption.
 
-- Node.js 18+ recommended
-- npm
-
-## Installation
-
-```bash
-npm install
-```
-
-## Environment Setup
-
-Create a `.env` file in project root:
+For the SMTP test helper (`test-smtp.js`), create `.env.local` with:
 
 ```env
 SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_USER=you@example.com
 SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=noreply@example.com
-SMTP_FROM_NAME=Your Name or Organization
+SMTP_FROM_EMAIL=you@example.com
+SMTP_FROM_NAME=Your Name
 ```
 
-You can copy from:
+## Codespaces Quickstart
+
+1. Create a Codespace for this repository.
+2. Add secrets in the Codespaces environment (or create `.env` in the repo root).
+3. Install dependencies: `npm install`.
+4. Run the dev server: `npm run dev`.
+5. Open the forwarded port 3000.
+
+If you are using MongoDB Atlas, set `MONGODB_URI` to your Atlas connection string.
+
+## Run
 
 ```bash
-cp .env.example .env
+npm install
+npm run dev
 ```
 
-## CSV Format
+Open `http://localhost:3000`, create an account, then configure SMTP in `/settings`.
 
-Your CSV must include an `email` column.
+Run `npx ts-node scripts/seed-admin.ts` once to create your admin account before first login.
 
-Current repository examples (`emails.csv`) use:
-
-```csv
-email,leadName,teamName,track,member2,member3,member4
-```
-
-Notes:
-- Invalid email rows are skipped.
-- If all rows are invalid (or CSV is empty), sending fails.
-- Any header can be used in templates as `{{headerName}}`.
-
-## Template Format
-
-Default template path used by CLI:
-
-
-```text
-templates/welcome.html
-```
-
-
-Variable examples:
-
-```html
-<p>Dear Team {{teamName}},</p>
-<p>Lead: {{leadName}}</p>
-```
-
-Conditional block example:
-
-```html
-{{#member4}}<p>Member 4: {{member4}}</p>{{/member4}}
-```
-
-
-## Running the Sender
-### Default input files
-
-Uses:
-- CSV: `./emails.csv`
-- Template: `./templates/welcome.html`
+## Build
 
 ```bash
-npm run send
+npm run typecheck
+npm run build
+npm start
 ```
 
-### Custom CSV and template paths
+## Bulk Sender (CSV + Templates)
 
-`main.ts` supports positional args:
+The bulk sender scripts live in the repo root (`main.ts`, `mailService.ts`, `templateManager.ts`, `csvParser.ts`) and use HTML templates in `templates/`. You can run them with a TypeScript runner (for example `tsx` or `ts-node`) if you install one.
 
-```bash
-npm run send -- ./secondary.csv ./templates/welcome.html
-```
+Example inputs:
 
-## Script Reference
+- `Registration_Emails.csv`
+- `Remainder_Events.csv`
 
-From `package.json`:
+## App Routes
 
-- `npm run send` - runs `ts-node main.ts`
-- `npm run send:custom` - runs `ts-node main.ts ./path/to/emails.csv ./path/to/template.html` (example placeholder command)
-- `npm test` - placeholder script (currently exits with error)
+- `/login`, `/signup`
+- `/compose`
+- `/monitor`
+- `/drafts`
+- `/sent`
+- `/templates`
+- `/scheduled`
+- `/bulk`
+- `/settings`
 
-Note:
-- `generate-sample` exists in `package.json` but points to `scripts/generate-samples.ts`, which is not present in this repository.
+## API Routes
 
-## SMTP Test Utility
+- Auth: `/api/auth/signup`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/me`
+- SMTP: `/api/smtp/settings`, `/api/smtp/test`
+- Mail: `/api/send`, `/api/send-bulk`, `/api/attachments`
+- Data: `/api/sent`, `/api/drafts`, `/api/templates`, `/api/schedule`, `/api/scheduled`
+- Monitor: `/api/monitor/stats`, `/api/monitor/chart`, `/api/monitor/stream`, `/api/monitor/failed`, `/api/monitor/retry/:id`, `/api/monitor/retry-all`, `/api/monitor/dismiss/:id`
 
-`test-smtp.js` is a standalone SMTP test helper.
+## Notes
 
-Important:
-- It reads `.env.local` (not `.env`).
-- It checks connection and sends a test email to `SMTP_USER`.
-
-Run manually:
-
-```bash
-node test-smtp.js
-```
-
-## Programmatic Usage
-
-```ts
-import { MailService } from './mailService';
-
-const mailService = new MailService({
-  smtpHost: process.env.SMTP_HOST!,
-  smtpPort: Number(process.env.SMTP_PORT || 587),
-  smtpUser: process.env.SMTP_USER!,
-  smtpPassword: process.env.SMTP_PASSWORD!,
-  fromEmail: process.env.SMTP_FROM_EMAIL!,
-  fromName: process.env.SMTP_FROM_NAME || 'Mailer',
-});
-
-const connected = await mailService.verifyConnection();
-if (!connected) throw new Error('SMTP verification failed');
-
-await mailService.sendBulkFromCSV('./emails.csv', {
-  subject: 'Your Subject Here',
-  htmlTemplatePath: './templates/welcome.html',
-}, {
-  rateLimitMs: 100,
-  generatePassword: false,
-});
-```
-
-## Behavior Summary
-
-- `main.ts` exits with non-zero status when:
-  - required SMTP env vars are missing,
-  - SMTP verification fails,
-  - input CSV/template file does not exist,
-  - at least one email fails to send.
-- Subject is currently hardcoded in `main.ts` as:
-  - `TetherX Prize: .xyz Domain Allocation Instructions`
-
-## License
-MIT
+- HTML templates live under `templates/` for batch sending and reference.
+- Attachments uploaded through the API are stored locally under `uploads/<userId>/`.
+- Agenda uses the same MongoDB database and stores jobs in the `agendaJobs` collection.
