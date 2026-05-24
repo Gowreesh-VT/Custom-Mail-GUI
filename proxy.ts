@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const publicRoutes = ["/login", "/signup"];
 const publicApi = ["/api/auth/login", "/api/auth/signup", "/api/auth/refresh", "/api/auth/logout"];
-const publicPrefixes = ["/api/track/open/", "/api/track/click/"];
+const publicPrefixes = ["/api/track/open/", "/api/track/click/", "/api/cron/"];
 
 async function verifyAccessToken(token: string) {
   const [header, payload, signature] = token.split(".");
@@ -21,7 +21,12 @@ async function verifyAccessToken(token: string) {
     .replace(/\//g, "_")
     .replace(/=+$/, "");
   if (expected !== signature) return false;
-  const parsed = JSON.parse(atob(payload.replace(/-/g, "+").replace(/_/g, "/")));
+  const normalizedPayload = payload.replace(/-/g, "+").replace(/_/g, "/");
+  const paddedPayload = normalizedPayload.padEnd(
+    normalizedPayload.length + ((4 - (normalizedPayload.length % 4)) % 4),
+    "="
+  );
+  const parsed = JSON.parse(atob(paddedPayload));
   if (parsed.type !== "access" || parsed.exp * 1000 <= Date.now()) return false;
   return parsed as { role?: string; forcePasswordReset?: boolean };
 }
