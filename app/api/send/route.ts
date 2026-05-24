@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/api";
 import { sendMailForUser } from "@/lib/mailer";
 import { parseList, jsonError } from "@/lib/utils";
-import { Email } from "@/models/Email";
+import { Email } from "@/lib/models";
 import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
 

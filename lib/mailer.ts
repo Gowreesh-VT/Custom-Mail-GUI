@@ -1,8 +1,7 @@
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
+import { prisma } from "@/lib/prisma";
 import { decryptText } from "@/lib/encrypt";
-import type { UserDocument } from "@/models/User";
-import { SystemConfig } from "@/models/SystemConfig";
 
 export interface SendPayload {
   to: string[];
@@ -14,50 +13,115 @@ export interface SendPayload {
   attachments?: Array<{ name?: string; path?: string; content?: Buffer; contentType?: string }>;
 }
 
-export function hasSmtpConfig(user: UserDocument) {
-  const config = user.smtpConfig;
-  return Boolean(config?.host && config?.port && config?.username && config?.passwordEnc && config?.fromEmail);
+type SmtpConfig = {
+  host?: string | null;
+  port?: number | null;
+  username?: string | null;
+  passwordEnc?: string | null;
+  fromName?: string | null;
+  fromEmail?: string | null;
+  encryption?: string | null;
+  rejectUnauth?: boolean | null;
+};
+
+type UserWithSmtp = {
+  id: string;
+  smtpHost?: string | null;
+  smtpPort?: number | null;
+  smtpUsername?: string | null;
+  smtpPasswordEnc?: string | null;
+  smtpFromName?: string | null;
+  smtpFromEmail?: string | null;
+  smtpEncryption?: string | null;
+  smtpRejectUnauth?: boolean | null;
+};
+
+function userToSmtpConfig(user: UserWithSmtp): SmtpConfig {
+  return {
+    host: user.smtpHost,
+    port: user.smtpPort,
+    username: user.smtpUsername,
+    passwordEnc: user.smtpPasswordEnc,
+    fromName: user.smtpFromName,
+    fromEmail: user.smtpFromEmail,
+    encryption: user.smtpEncryption,
+    rejectUnauth: user.smtpRejectUnauth
+  };
 }
 
-function hasConfig(config: any) {
-  return Boolean(config?.host && config?.port && config?.username && config?.passwordEnc && config?.fromEmail);
+export function hasSmtpConfig(user: UserWithSmtp) {
+  return hasConfig(userToSmtpConfig(user));
 }
 
-function createTransporterFromConfig(config: any) {
+function hasConfig(config: SmtpConfig) {
+  return Boolean(config.host && config.port && config.username && config.passwordEnc && config.fromEmail);
+}
+
+function createTransporterFromConfig(config: SmtpConfig) {
   if (!hasConfig(config)) throw new Error("SMTP config is incomplete");
   return nodemailer.createTransport({
-    host: config.host,
-    port: config.port,
+    host: config.host!,
+    port: config.port!,
     secure: config.encryption === "SSL" || config.port === 465,
+    requireTLS: config.encryption === "TLS",
     auth: {
-      user: config.username,
+      user: config.username!,
       pass: decryptText(config.passwordEnc!)
     },
     tls: {
       rejectUnauthorized: config.rejectUnauth !== false
     }
-  } as any);
+  });
 }
 
-export function createTransporter(user: UserDocument) {
+export function createTransporter(user: UserWithSmtp) {
   if (!hasSmtpConfig(user)) throw new Error("SMTP config is incomplete");
-  return createTransporterFromConfig(user.smtpConfig!);
+  return createTransporterFromConfig(userToSmtpConfig(user));
 }
 
-export async function getEffectiveSmtpConfig(user: UserDocument) {
-  const systemConfig = await SystemConfig.findOne().sort({ updatedAt: -1 }).lean();
-  if (systemConfig?.globalSmtpActive && hasConfig(systemConfig.globalSmtp)) {
-    return systemConfig.globalSmtp;
-  }
-  return user.smtpConfig!;
+async function getGlobalSmtpConfig(): Promise<SmtpConfig | null> {
+  const systemConfig = await prisma.systemConfig.findUnique({ where: { id: "singleton" } });
+  if (!systemConfig?.globalSmtpActive) return null;
+  return {
+    host: systemConfig.smtpHost,
+    port: systemConfig.smtpPort,
+    username: systemConfig.smtpUsername,
+    passwordEnc: systemConfig.smtpPasswordEnc,
+    fromName: systemConfig.smtpFromName,
+    fromEmail: systemConfig.smtpFromEmail,
+    encryption: systemConfig.smtpEncryption,
+    rejectUnauth: systemConfig.smtpRejectUnauth
+  };
+}
+
+export async function getEffectiveSmtpConfig(user: UserWithSmtp) {
+  const globalSmtp = await getGlobalSmtpConfig();
+  if (globalSmtp && hasConfig(globalSmtp)) return globalSmtp;
+  return userToSmtpConfig(user);
 }
 
 export async function isGlobalSmtpActive() {
-  const systemConfig = await SystemConfig.findOne().sort({ updatedAt: -1 }).lean();
+  const systemConfig = await prisma.systemConfig.findUnique({ where: { id: "singleton" } });
   return Boolean(systemConfig?.globalSmtpActive);
 }
 
-export async function sendMailForUser(user: UserDocument, payload: SendPayload) {
+export async function createMailerTransporter(userId: string) {
+  const globalSmtp = await getGlobalSmtpConfig();
+  if (globalSmtp) {
+    if (!hasConfig(globalSmtp)) {
+      throw new Error("Global SMTP override is active but not fully configured");
+    }
+    return createTransporterFromConfig(globalSmtp);
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || !hasSmtpConfig(user)) {
+    throw new Error("SMTP is not configured. Go to Settings to add your SMTP credentials.");
+  }
+  return createTransporter(user);
+}
+
+export async function sendMailForUser(user: UserWithSmtp, payload: SendPayload) {
   const config = await getEffectiveSmtpConfig(user);
   const transporter = createTransporterFromConfig(config);
   const options: Mail.Options = {

@@ -3,10 +3,11 @@ import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { sendMailForUser } from "@/lib/mailer";
 import { applyMergeFields, jsonError } from "@/lib/utils";
-import { Email } from "@/models/Email";
-import { Template } from "@/models/Template";
+import { Email } from "@/lib/models";
+import { Template } from "@/lib/models";
 import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
+import { fromJson, toJson } from "@/lib/json-fields";
 
 const encoder = new TextEncoder();
 
@@ -17,7 +18,7 @@ export async function POST(req: NextRequest) {
   if (!(file instanceof File)) return jsonError("CSV file is required", 400);
   const templateId = String(form.get("templateId") || "");
   const delayMs = Number(form.get("delayMs") || 500);
-  const columnMap = JSON.parse(String(form.get("columnMap") || "{}")) as Record<string, string>;
+  const columnMap = fromJson<Record<string, string>>(String(form.get("columnMap") || "{}"), {});
   const template = await Template.findOne({ _id: templateId, userId: user._id });
   if (!template) return jsonError("Template not found", 404);
 
@@ -28,7 +29,7 @@ export async function POST(req: NextRequest) {
 
   const stream = new ReadableStream({
     async start(controller) {
-      controller.enqueue(encoder.encode(JSON.stringify({ type: "started", total: rows.length }) + "\n"));
+      controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length })}\n`));
       for (let index = 0; index < rows.length; index++) {
         if (req.signal.aborted) break;
         const row = rows[index];
@@ -42,16 +43,16 @@ export async function POST(req: NextRequest) {
           const email = await Email.create({ userId: user._id, ...payload, status: "sent", isBulk: true, sentAt: new Date() });
           await sendMailForUser(user, { ...payload, bodyHtml: injectTracking(payload.bodyHtml, String(email._id), true) });
           await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, isBulk: true }, String(email._id), req);
-          controller.enqueue(encoder.encode(JSON.stringify({ type: "sent", index, email: row.email }) + "\n"));
+          controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email })}\n`));
         } catch (error: any) {
           const email = await Email.create({ userId: user._id, ...payload, status: "failed", errorMsg: error.message, isBulk: true, sentAt: new Date() });
           await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: error.message, isBulk: true }, String(email._id), req);
-          controller.enqueue(encoder.encode(JSON.stringify({ type: "failed", index, email: row.email, error: error.message }) + "\n"));
+          controller.enqueue(encoder.encode(`${toJson({ type: "failed", index, email: row.email, error: error.message })}\n`));
         }
         if (index < rows.length - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
       await logAudit(req.signal.aborted ? "email.bulk_stopped" : "email.bulk_completed", String(user._id), { recipientCount: rows.length, templateId }, undefined, req);
-      controller.enqueue(encoder.encode(JSON.stringify({ type: req.signal.aborted ? "stopped" : "completed" }) + "\n"));
+      controller.enqueue(encoder.encode(`${toJson({ type: req.signal.aborted ? "stopped" : "completed" })}\n`));
       controller.close();
     }
   });
