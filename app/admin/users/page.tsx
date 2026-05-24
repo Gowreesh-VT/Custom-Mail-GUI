@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -17,8 +17,8 @@ export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [filter, setFilter] = useState("all");
   const [open, setOpen] = useState(false);
-  async function load() { setUsers((await apiFetch<any>(`/api/admin/users?q=${q}&filter=${filter}`)).users); }
-  useEffect(() => { load(); }, [q, filter]);
+  const load = useCallback(async () => { setUsers((await apiFetch<any>(`/api/admin/users?q=${q}&filter=${filter}`)).users); }, [q, filter]);
+  useEffect(() => { load(); }, [load]);
   async function create(formData: FormData) {
     const password = String(formData.get("password"));
     if (password !== String(formData.get("confirm"))) { toast.error("Passwords do not match"); return; }

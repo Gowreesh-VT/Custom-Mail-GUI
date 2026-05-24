@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, Eye, FileCode, Pencil, Plus, Search, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -54,14 +54,14 @@ export default function TemplatesPage() {
   const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
 
-  async function loadTemplates() {
+  const loadTemplates = useCallback(async () => {
     const data = await apiFetch<{ templates: TemplateListItem[] }>(`/api/templates?q=${encodeURIComponent(search)}&sort=${sort}`);
     setTemplates(data.templates);
-  }
+  }, [search, sort]);
 
   useEffect(() => {
     loadTemplates().catch((error) => toast.error(error.message));
-  }, [search, sort]);
+  }, [loadTemplates]);
 
   async function handleHtmlSource(bodyHtml: string) {
     setValidationError("");

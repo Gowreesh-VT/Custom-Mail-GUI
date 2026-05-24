@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Clock, MailCheck, MailX, RefreshCw, Send } from "lucide-react";
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip as ChartTooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -23,11 +23,11 @@ export default function MonitorPage() {
   const [paused, setPaused] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     const [s, c, f] = await Promise.all([apiFetch<any>("/api/monitor/stats"), apiFetch<any>(`/api/monitor/chart?days=${days}`), apiFetch<any>("/api/monitor/failed?days=7")]);
     setStats(s.stats); setChart(c.data); setFailed(f.failed);
-  }
-  useEffect(() => { load(); const timer = setInterval(load, 60000); return () => clearInterval(timer); }, [days]);
+  }, [days]);
+  useEffect(() => { load(); const timer = setInterval(load, 60000); return () => clearInterval(timer); }, [load]);
   useEffect(() => {
     const source = new EventSource("/api/monitor/stream");
     source.onmessage = (event) => setEvents((current) => [JSON.parse(event.data), ...current].slice(0, 100));

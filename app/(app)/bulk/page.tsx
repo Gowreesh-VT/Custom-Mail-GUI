@@ -69,8 +69,10 @@ export default function BulkPage() {
     setStep(2);
   }
 
-  const sampleRow = rows[0] || {};
-  const mappedSample = useMemo(() => Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, sampleRow[column] || ""])), [columnMap, sampleRow]);
+  const mappedSample = useMemo(() => {
+    const sampleRow = rows[0] || {};
+    return Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, sampleRow[column] || ""]));
+  }, [columnMap, rows]);
   const previewHtml = fullTemplate ? replaceTemplateValues(fullTemplate.bodyHtml, mappedSample) : "";
   const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean);
   const favouriteTemplates = templates.filter((template) => template.isFavourite);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,8 @@ export default function AdminAuditPage() {
   const [category, setCategory] = useState("all");
   const [userId, setUserId] = useState("all");
   const [q, setQ] = useState("");
-  async function load() { const d = await apiFetch<any>(`/api/admin/audit?category=${category}&userId=${userId}&q=${q}`); setLogs(d.logs); setUsers(d.users); }
-  useEffect(() => { load(); }, [category, userId, q]);
+  const load = useCallback(async () => { const d = await apiFetch<any>(`/api/admin/audit?category=${category}&userId=${userId}&q=${q}`); setLogs(d.logs); setUsers(d.users); }, [category, userId, q]);
+  useEffect(() => { load(); }, [load]);
   function exportCsv() {
     const csv = ["Time,Category,Action,User,Target,IP,Details", ...logs.map((l) => [l.createdAt, l.category, l.action, l.userName, l.targetName, l.ip, JSON.stringify(l.metadata)].map((v) => `"${String(v || "").replace(/"/g, '""')}"`).join(","))].join("\n");
     const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "audit-log.csv"; a.click();
