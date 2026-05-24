@@ -1,6 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  serverExternalPackages: ["mongoose", "nodemailer", "agenda", "bcryptjs"],
+  serverExternalPackages: ["@prisma/client", "nodemailer", "bcryptjs"],
   turbopack: {
     root: process.cwd()
   },
