@@ -1,30 +1,38 @@
+/// <reference types="node" />
+
 import "dotenv/config";
+import { PrismaClient } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { connectToDatabase } from "../lib/mongodb";
-import { User } from "../models/User";
+
+const prisma = new PrismaClient();
 
 async function main() {
   const email = process.env.ADMIN_EMAIL;
   const password = process.env.ADMIN_PASSWORD;
-  const name = process.env.ADMIN_NAME || "Admin";
-  if (!email || !password) throw new Error("ADMIN_EMAIL and ADMIN_PASSWORD are required");
-  await connectToDatabase();
-  const existing = await User.findOne({ email: email.toLowerCase() });
+  const name = process.env.ADMIN_NAME;
+
+  if (!email || !password || !name) {
+    console.error("Set ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME in .env");
+    process.exit(1);
+  }
+
+  const existing = await prisma.user.findUnique({ where: { email: email.toLowerCase() } });
   if (existing) {
-    console.log("Admin already exists, skipping");
+    console.log("Admin already exists, skipping.");
+    await prisma.$disconnect();
     return;
   }
-  await User.create({
-    name,
-    email: email.toLowerCase(),
-    passwordHash: await bcrypt.hash(password, 12),
-    role: "admin",
-    isActive: true
+
+  const passwordHash = await bcrypt.hash(password, 12);
+  await prisma.user.create({
+    data: { name, email: email.toLowerCase(), passwordHash, role: "admin" },
   });
-  console.log("Admin created successfully");
+
+  console.log(`Admin created: ${email}`);
+  await prisma.$disconnect();
 }
 
-main().then(() => process.exit(0)).catch((error) => {
-  console.error(error.message);
+main().catch((e) => {
+  console.error(e);
   process.exit(1);
 });
