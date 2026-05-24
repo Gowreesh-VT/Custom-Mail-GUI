@@ -1,7 +1,8 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Email } from "@/models/Email";
-import { ScheduledEmail } from "@/models/ScheduledEmail";
+import { Email } from "@/lib/models";
+import { ScheduledEmail } from "@/lib/models";
+import { toJson } from "@/lib/json-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -12,7 +13,7 @@ export async function GET(req: NextRequest) {
   let lastSeen = new Date(Date.now() - 60_000);
   const stream = new ReadableStream({
     start(controller) {
-      const send = (event: unknown) => controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+      const send = (event: unknown) => controller.enqueue(encoder.encode(`data: ${toJson(event)}\n\n`));
       send({ type: "info", message: "Connected to activity stream", at: new Date().toISOString() });
       const timer = setInterval(async () => {
         const [emails, scheduled] = await Promise.all([
@@ -20,8 +21,8 @@ export async function GET(req: NextRequest) {
           ScheduledEmail.find({ userId: user._id, updatedAt: { $gt: lastSeen } }).sort({ updatedAt: 1 }).limit(20).lean()
         ]);
         lastSeen = new Date();
-        emails.forEach((email) => send({ type: email.status, to: email.to?.[0], subject: email.subject, error: email.errorMsg, at: email.sentAt }));
-        scheduled.forEach((item) => send({ type: "scheduled", subject: item.subject, status: item.status, at: item.updatedAt }));
+        emails.forEach((email: any) => send({ type: email.status, to: email.to?.[0], subject: email.subject, error: email.errorMsg, at: email.sentAt }));
+        scheduled.forEach((item: any) => send({ type: "scheduled", subject: item.subject, status: item.status, at: item.updatedAt }));
       }, 5000);
       req.signal.addEventListener("abort", () => {
         clearInterval(timer);

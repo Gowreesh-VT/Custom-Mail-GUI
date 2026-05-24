@@ -1,4 +1,4 @@
-import { Email } from "@/models/Email";
+import { prisma } from "@/lib/prisma";
 
 export function trackingBaseUrl() {
   return (process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -19,12 +19,16 @@ export function injectTracking(bodyHtml: string, emailId: string, enabled = true
 export async function updateEmailTracking(emailId: string, type: "open" | "click") {
   const now = new Date();
   if (type === "open") {
-    await Email.updateOne(
-      { _id: emailId },
-      { $inc: { openCount: 1 }, $set: { lastOpenedAt: now }, $setOnInsert: {}, $min: { firstOpenedAt: now } } as any
-    );
-    await Email.updateOne({ _id: emailId, firstOpenedAt: { $exists: false } }, { $set: { firstOpenedAt: now } });
+    const email = await prisma.email.findUnique({ where: { id: emailId }, select: { firstOpenedAt: true } });
+    await prisma.email.update({
+      where: { id: emailId },
+      data: {
+        openCount: { increment: 1 },
+        lastOpenedAt: now,
+        firstOpenedAt: email?.firstOpenedAt ?? now
+      }
+    });
   } else {
-    await Email.updateOne({ _id: emailId }, { $inc: { clickCount: 1 } });
+    await prisma.email.update({ where: { id: emailId }, data: { clickCount: { increment: 1 } } });
   }
 }

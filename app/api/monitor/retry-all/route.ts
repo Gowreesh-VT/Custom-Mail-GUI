@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { sendMailForUser } from "@/lib/mailer";
-import { Email } from "@/models/Email";
+import { Email } from "@/lib/models";
 
 export async function POST(req: NextRequest) {
   const { user } = await requireUser(req);

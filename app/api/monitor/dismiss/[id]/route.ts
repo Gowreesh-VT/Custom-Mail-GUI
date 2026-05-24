@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Email } from "@/models/Email";
+import { Email } from "@/lib/models";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireUser(req);
