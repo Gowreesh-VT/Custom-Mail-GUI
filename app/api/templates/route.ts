@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/api";
 import { jsonError } from "@/lib/utils";
 import { detectTemplateFields, formatInvalidImagesMessage, isValidHtmlTemplate, validateExternalImageUrls } from "@/lib/template-html";
-import { Template } from "@/models/Template";
+import { Template } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 
@@ -29,13 +29,13 @@ export async function GET(req: NextRequest) {
     az: { name: 1 }
   };
   const templates = await Template.find(filter)
-    .select("_id name description subjectLine subject mergeFields previewImage isFavourite createdAt updatedAt")
+    .select("_id name description subjectLine mergeFields previewImage isFavourite createdAt updatedAt")
     .sort(sortMap[sort] || sortMap.newest)
     .lean();
 
   return Response.json({
     success: true,
-    templates: templates.map((template) => ({
+    templates: templates.map((template: any) => ({
       ...template,
       subjectLine: template.subjectLine || template.subject || ""
     }))

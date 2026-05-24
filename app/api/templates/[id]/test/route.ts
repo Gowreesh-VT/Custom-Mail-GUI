@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { sendMailForUser } from "@/lib/mailer";
 import { jsonError } from "@/lib/utils";
-import { Template } from "@/models/Template";
+import { Template } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

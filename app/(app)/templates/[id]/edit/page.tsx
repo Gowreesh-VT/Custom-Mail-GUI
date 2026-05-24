@@ -7,6 +7,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { html } from "@codemirror/lang-html";
 import { HighlightStyle, indentOnInput, indentUnit, syntaxHighlighting } from "@codemirror/language";
 import { EditorState } from "@codemirror/state";
+import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import beautify from "js-beautify";
 import { ArrowLeft, CheckCircle2, Code2, Eye, RefreshCw, Save } from "lucide-react";
@@ -23,21 +24,71 @@ import { detectTemplateFields, formatInvalidImagesMessage, validateExternalImage
 import { generateTemplateThumbnail, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
 
 const htmlEditorHighlightStyle = HighlightStyle.define([
-  { tag: tags.angleBracket, color: "#808080" },
-  { tag: tags.tagName, color: "#e06c75" },
-  { tag: tags.attributeName, color: "#d19a66" },
-  { tag: tags.attributeValue, color: "#98c379" },
-  { tag: tags.comment, color: "#5c6370", fontStyle: "italic" },
-  { tag: (tags as any).docType || tags.meta, color: "#808080" },
-  { tag: tags.punctuation, color: "#808080" },
-  { tag: tags.string, color: "#98c379" }
+  { tag: tags.angleBracket, color: "#7dd3fc" },
+  { tag: tags.tagName, color: "#fb7185" },
+  { tag: tags.attributeName, color: "#facc15" },
+  { tag: tags.attributeValue, color: "#86efac" },
+  { tag: tags.comment, color: "#64748b", fontStyle: "italic" },
+  { tag: (tags as any).docType || tags.meta, color: "#a78bfa" },
+  { tag: tags.punctuation, color: "#94a3b8" },
+  { tag: tags.string, color: "#86efac" },
+  { tag: tags.keyword, color: "#c084fc" },
+  { tag: tags.propertyName, color: "#38bdf8" },
+  { tag: tags.number, color: "#fdba74" }
 ]);
+
+const htmlEditorTheme = EditorView.theme(
+  {
+    "&": {
+      backgroundColor: "#0b1020",
+      color: "#dbeafe",
+      minHeight: "calc(100vh - 16rem)"
+    },
+    ".cm-scroller": {
+      backgroundColor: "#0b1020",
+      fontFamily: '"JetBrains Mono", "Fira Code", "Courier New", monospace'
+    },
+    ".cm-content": {
+      caretColor: "#22d3ee",
+      padding: "16px 0"
+    },
+    ".cm-cursor": {
+      borderLeftColor: "#22d3ee"
+    },
+    ".cm-selectionBackground, &.cm-focused .cm-selectionBackground": {
+      backgroundColor: "#1e40af66"
+    },
+    ".cm-activeLine": {
+      backgroundColor: "#172554"
+    },
+    ".cm-gutters": {
+      backgroundColor: "#080c18",
+      borderRight: "1px solid #1e293b",
+      color: "#64748b"
+    },
+    ".cm-activeLineGutter": {
+      backgroundColor: "#172554",
+      color: "#bfdbfe"
+    },
+    ".cm-foldGutter span": {
+      color: "#38bdf8"
+    },
+    ".cm-matchingBracket, .cm-nonmatchingBracket": {
+      backgroundColor: "#164e63",
+      color: "#ecfeff",
+      outline: "1px solid #22d3ee"
+    }
+  },
+  { dark: true }
+);
 
 const htmlEditorExtensions = [
   html({ autoCloseTags: true }),
   indentOnInput(),
   indentUnit.of("  "),
   EditorState.tabSize.of(2),
+  EditorView.lineWrapping,
+  htmlEditorTheme,
   syntaxHighlighting(htmlEditorHighlightStyle)
 ];
 

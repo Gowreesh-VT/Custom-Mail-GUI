@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireUser } from "@/lib/api";
 import { jsonError } from "@/lib/utils";
 import { detectTemplateFields, formatInvalidImagesMessage, validateExternalImageUrls } from "@/lib/template-html";
-import { Template } from "@/models/Template";
+import { Template } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

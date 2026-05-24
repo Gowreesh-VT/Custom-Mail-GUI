@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { jsonError } from "@/lib/utils";
-import { Template } from "@/models/Template";
+import { Template } from "@/lib/models";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireUser(req);
