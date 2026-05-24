@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { BarChart3, Clock, FileText, Layers, LogOut, Mail, Menu, Moon, PenLine, Send, Settings, Sun } from "lucide-react";
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Separator } from "@/components/ui/separator";
@@ -24,9 +24,11 @@ const nav = [
 function SidebarBody() {
   const pathname = usePathname();
   const router = useRouter();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
   const [me, setMe] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    setMounted(true);
     fetch("/api/auth/me").then((r) => r.json()).then((d) => setMe(d)).catch(() => {});
   }, []);
   async function logout() {
@@ -50,7 +52,9 @@ function SidebarBody() {
         <Separator />
         <div className="flex items-center justify-between rounded-md border p-3 text-sm">
           <span className="flex items-center gap-2"><span className={cn("h-2.5 w-2.5 rounded-full", me?.smtpConfigured ? "bg-sent" : "bg-failed")} /> SMTP</span>
-          <Button variant="ghost" size="icon" onClick={() => setTheme(theme === "dark" ? "light" : "dark")}>{theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}</Button>
+          <Button variant="ghost" size="icon" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Toggle theme">
+            {mounted ? resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" /> : <span className="h-4 w-4" />}
+          </Button>
         </div>
         <div className="rounded-md bg-muted p-3 text-sm">
           <div className="font-medium">{me?.user?.name || "Signed in"}</div>

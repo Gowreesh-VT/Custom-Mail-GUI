@@ -10,7 +10,17 @@ export async function apiFetch<T>(input: RequestInfo | URL, init?: RequestInit):
     window.location.href = "/login";
     throw new Error("Authentication required");
   }
-  const data = await res.json();
-  if (!res.ok || data.success === false) throw new Error(data.error || "Request failed");
+  const text = await res.text();
+  let data: any = {};
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, error: text };
+    }
+  }
+  if (!res.ok || data.success === false) {
+    throw new Error(data.error || `Request failed (${res.status} ${res.statusText})`);
+  }
   return data;
 }
