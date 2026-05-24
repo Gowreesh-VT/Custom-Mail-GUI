@@ -1,8 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { connectToDatabase } from "@/lib/mongodb";
+import { connectToDatabase } from "@/lib/models";
 import { updateEmailTracking } from "@/lib/tracking";
-import { Email } from "@/models/Email";
-import { EmailEvent } from "@/models/EmailEvent";
+import { Email } from "@/lib/models";
+import { EmailEvent } from "@/lib/models";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ emailId: string }> }) {
   await connectToDatabase();
