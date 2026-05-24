@@ -1,0 +1,294 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+// ---------------------------------------------------------------------------
+// USER
+// ---------------------------------------------------------------------------
+
+model User {
+  id                 String   @id @default(cuid())
+  name               String
+  email              String   @unique
+  passwordHash       String
+  role               String   @default("user")       // "admin" | "user"
+  isActive           Boolean  @default(true)
+  forcePasswordReset Boolean  @default(false)
+  dailyLimit         Int      @default(0)             // 0 = unlimited
+  monthlyLimit       Int      @default(0)             // 0 = unlimited
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  // SMTP config (nullable - user may not have configured yet)
+  smtpHost           String?
+  smtpPort           Int?
+  smtpUsername       String?
+  smtpPasswordEnc    String?                          // AES-256 encrypted
+  smtpFromName       String?
+  smtpFromEmail      String?
+  smtpEncryption     String?                          // "TLS" | "SSL" | "NONE"
+  smtpRejectUnauth   Boolean  @default(true)
+
+  // Relations
+  smtpHealthLogs     SmtpHealthLog[]
+  emails             Email[]
+  drafts             Draft[]
+  templates          Template[]
+  scheduledEmails    ScheduledEmail[]
+  auditLogsAsActor   AuditLog[]         @relation("ActorLogs")
+  auditLogsAsTarget  AuditLog[]         @relation("TargetLogs")
+  announcements      Announcement[]
+  dismissedAnnouncements AnnouncementDismissal[]
+  emailEvents        EmailEvent[]
+}
+
+// ---------------------------------------------------------------------------
+// SMTP HEALTH LOG (was embedded array in the previous User document)
+// ---------------------------------------------------------------------------
+
+model SmtpHealthLog {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  success     Boolean
+  latencyMs   Int?
+  error       String?
+  testedAt    DateTime @default(now())
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// EMAIL (sent log)
+// ---------------------------------------------------------------------------
+
+model Email {
+  id               String    @id @default(cuid())
+  userId           String
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Recipients - stored as JSON arrays serialized to String
+  toAddresses      String                             // JSON: string[]
+  ccAddresses      String?                            // JSON: string[]
+  bccAddresses     String?                            // JSON: string[]
+  replyTo          String?
+
+  subject          String
+  bodyHtml         String
+
+  // Attachments - stored as JSON array of objects
+  attachments      String?                            // JSON: {name,size,mimeType,path}[]
+
+  status           String                             // "sent" | "failed" | "partial"
+  errorMsg         String?
+  isBulk           Boolean   @default(false)
+  sentAt           DateTime  @default(now())
+
+  // Bulk send reference
+  templateId       String?
+  templateName     String?
+  mergeData        String?                            // JSON: object
+
+  // Retry tracking
+  retryCount       Int       @default(0)
+  retryHistory     String?                            // JSON: {attemptedAt,success,error}[]
+  acknowledged     Boolean   @default(false)
+
+  // Open/click tracking
+  trackingEnabled  Boolean   @default(true)
+  openCount        Int       @default(0)
+  clickCount       Int       @default(0)
+  firstOpenedAt    DateTime?
+  lastOpenedAt     DateTime?
+
+  // Relations
+  events           EmailEvent[]
+
+  @@index([userId])
+  @@index([userId, status])
+  @@index([userId, sentAt])
+  @@index([userId, isBulk])
+}
+
+// ---------------------------------------------------------------------------
+// DRAFT
+// ---------------------------------------------------------------------------
+
+model Draft {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  toAddresses String?                                 // JSON: string[]
+  ccAddresses String?
+  bccAddresses String?
+  replyTo     String?
+  subject     String?
+  bodyHtml    String?
+  attachments String?                                 // JSON: {name,size,mimeType,path}[]
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// TEMPLATE
+// ---------------------------------------------------------------------------
+
+model Template {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name          String
+  description   String?
+  subjectLine   String
+  bodyHtml      String
+  mergeFields   String?                               // JSON: string[]
+  previewImage  String?                               // base64 dataURL
+  uploadMethod  String   @default("paste")            // "file" | "paste"
+  isHtml        Boolean  @default(true)
+  isFavourite   Boolean  @default(false)
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@index([userId, isFavourite])
+}
+
+// ---------------------------------------------------------------------------
+// SCHEDULED EMAIL
+// ---------------------------------------------------------------------------
+
+model ScheduledEmail {
+  id           String    @id @default(cuid())
+  userId       String
+  user         User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  toAddresses  String                                 // JSON: string[]
+  ccAddresses  String?
+  bccAddresses String?
+  replyTo      String?
+  subject      String
+  bodyHtml     String
+  attachments  String?                                // JSON array
+
+  scheduledAt  DateTime
+  status       String    @default("pending")          // "pending"|"sending"|"sent"|"failed"|"cancelled"|"missed"
+  sentAt       DateTime?
+  errorMsg     String?
+  retryCount   Int       @default(0)
+
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+// ---------------------------------------------------------------------------
+// AUDIT LOG
+// ---------------------------------------------------------------------------
+
+model AuditLog {
+  id          String   @id @default(cuid())
+  action      String                                  // e.g. "email.sent"
+  category    String                                  // "AUTH"|"EMAIL"|"ADMIN"
+  userId      String
+  actor       User     @relation("ActorLogs", fields: [userId], references: [id], onDelete: Cascade)
+  userName    String                                  // snapshot at log time
+  targetId    String?
+  target      User?    @relation("TargetLogs", fields: [targetId], references: [id], onDelete: SetNull)
+  targetName  String?
+  metadata    String?                                 // JSON: flexible object
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([category])
+  @@index([action])
+  @@index([createdAt])
+}
+
+// ---------------------------------------------------------------------------
+// ANNOUNCEMENT
+// ---------------------------------------------------------------------------
+
+model Announcement {
+  id          String   @id @default(cuid())
+  message     String
+  type        String   @default("info")               // "info"|"warning"|"critical"
+  isActive    Boolean  @default(true)
+  createdById String
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  expiresAt   DateTime?
+  createdAt   DateTime @default(now())
+
+  dismissals  AnnouncementDismissal[]
+
+  @@index([isActive])
+}
+
+model AnnouncementDismissal {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dismissedAt    DateTime     @default(now())
+
+  @@unique([announcementId, userId])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// EMAIL EVENT (open/click tracking)
+// ---------------------------------------------------------------------------
+
+model EmailEvent {
+  id        String   @id @default(cuid())
+  emailId   String
+  email     Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String                                    // "open" | "click"
+  url       String?                                   // for clicks only
+  ip        String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  @@index([emailId])
+  @@index([userId])
+  @@index([type])
+}
+
+// ---------------------------------------------------------------------------
+// SYSTEM CONFIG (singleton - global SMTP override)
+// ---------------------------------------------------------------------------
+
+model SystemConfig {
+  id                 String   @id @default("singleton")
+  globalSmtpActive   Boolean  @default(false)
+  smtpHost           String?
+  smtpPort           Int?
+  smtpUsername       String?
+  smtpPasswordEnc    String?
+  smtpFromName       String?
+  smtpFromEmail      String?
+  smtpEncryption     String?
+  smtpRejectUnauth   Boolean  @default(true)
+  updatedAt          DateTime @updatedAt
+  updatedById        String?
+}
