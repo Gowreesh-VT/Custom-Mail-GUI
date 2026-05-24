@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
-import { Announcement } from "@/models/Announcement";
+import { Announcement } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

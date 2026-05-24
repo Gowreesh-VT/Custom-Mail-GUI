@@ -2,7 +2,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/api";
 import { jsonError } from "@/lib/utils";
-import { Draft } from "@/models/Draft";
+import { Draft } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

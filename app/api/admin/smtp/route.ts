@@ -3,8 +3,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { encryptText } from "@/lib/encrypt";
-import { SystemConfig } from "@/models/SystemConfig";
-import { User } from "@/models/User";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -24,21 +23,46 @@ const schema = z.object({
 
 export async function GET(req: NextRequest) {
   await requireAdmin(req);
-  const config = await SystemConfig.findOne().sort({ updatedAt: -1 }).lean();
-  const users = await User.find().select("name email smtpConfig smtpHealthLog").lean();
+  const config = await prisma.systemConfig.findUnique({ where: { id: "singleton" } });
+  const users = await prisma.user.findMany({
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      smtpHost: true,
+      smtpHealthLogs: {
+        orderBy: { testedAt: "desc" },
+        take: 1,
+        select: { success: true, testedAt: true }
+      }
+    },
+    orderBy: { createdAt: "desc" }
+  });
+
   return Response.json({
     success: true,
     config: {
       globalSmtpActive: Boolean(config?.globalSmtpActive),
-      globalSmtp: config?.globalSmtp ? { ...config.globalSmtp, passwordEnc: undefined, hasPassword: Boolean(config.globalSmtp.passwordEnc) } : {}
+      globalSmtp: config
+        ? {
+            host: config.smtpHost,
+            port: config.smtpPort,
+            username: config.smtpUsername,
+            fromName: config.smtpFromName,
+            fromEmail: config.smtpFromEmail,
+            encryption: config.smtpEncryption,
+            rejectUnauth: config.smtpRejectUnauth,
+            hasPassword: Boolean(config.smtpPasswordEnc)
+          }
+        : {}
     },
     users: users.map((user) => ({
-      _id: user._id,
+      _id: user.id,
       name: user.name,
       email: user.email,
-      host: user.smtpConfig?.host || "",
-      lastTested: user.smtpHealthLog?.at(-1)?.testedAt,
-      status: user.smtpHealthLog?.at(-1)?.success
+      host: user.smtpHost || "",
+      lastTested: user.smtpHealthLogs[0]?.testedAt,
+      status: user.smtpHealthLogs[0]?.success
     }))
   });
 }
@@ -46,23 +70,27 @@ export async function GET(req: NextRequest) {
 export async function PUT(req: NextRequest) {
   const { user } = await requireAdmin(req);
   const body = schema.parse(await req.json());
-  const existing = await SystemConfig.findOne().sort({ updatedAt: -1 });
-  const current = existing || new SystemConfig();
-  current.globalSmtpActive = body.globalSmtpActive;
-  if (body.globalSmtp) {
-    current.globalSmtp = {
-      host: body.globalSmtp.host,
-      port: body.globalSmtp.port,
-      username: body.globalSmtp.username,
-      passwordEnc: body.globalSmtp.password ? encryptText(body.globalSmtp.password) : current.globalSmtp?.passwordEnc,
-      fromName: body.globalSmtp.fromName,
-      fromEmail: body.globalSmtp.fromEmail,
-      encryption: body.globalSmtp.encryption,
-      rejectUnauth: body.globalSmtp.rejectUnauth
-    };
-  }
-  current.updatedBy = user._id as any;
-  await current.save();
-  await logAudit(body.globalSmtpActive ? "admin.smtp_override_enabled" : "admin.smtp_override_disabled", String(user._id), { smtpHost: current.globalSmtp?.host }, undefined, req);
+  const existing = await prisma.systemConfig.findUnique({ where: { id: "singleton" } });
+  const smtp = body.globalSmtp;
+  const data = {
+    globalSmtpActive: body.globalSmtpActive,
+    smtpHost: smtp?.host ?? null,
+    smtpPort: smtp?.port ?? null,
+    smtpUsername: smtp?.username ?? null,
+    smtpPasswordEnc: smtp?.password ? encryptText(smtp.password) : existing?.smtpPasswordEnc ?? null,
+    smtpFromName: smtp?.fromName ?? null,
+    smtpFromEmail: smtp?.fromEmail ?? null,
+    smtpEncryption: smtp?.encryption ?? "TLS",
+    smtpRejectUnauth: smtp?.rejectUnauth ?? true,
+    updatedById: String(user._id)
+  };
+
+  await prisma.systemConfig.upsert({
+    where: { id: "singleton" },
+    create: { id: "singleton", ...data },
+    update: data
+  });
+
+  await logAudit(body.globalSmtpActive ? "admin.smtp_override_enabled" : "admin.smtp_override_disabled", String(user._id), { smtpHost: data.smtpHost }, undefined, req);
   return Response.json({ success: true });
 }

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Announcement } from "@/models/Announcement";
+import { Announcement } from "@/lib/models";
 import { jsonError } from "@/lib/utils";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

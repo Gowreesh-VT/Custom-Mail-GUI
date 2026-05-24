@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { AuditLog } from "@/models/AuditLog";
-import { User } from "@/models/User";
+import { AuditLog } from "@/lib/models";
+import { User } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

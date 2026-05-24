@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
-import { User } from "@/models/User";
+import { User } from "@/lib/models";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireAdmin(req);

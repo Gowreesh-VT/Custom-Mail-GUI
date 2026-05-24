@@ -1,12 +1,15 @@
 import { type NextRequest } from "next/server";
-import { connectToDatabase } from "@/lib/mongodb";
 import { getUserFromRequest } from "@/lib/auth";
-import { User } from "@/models/User";
+import { prisma } from "@/lib/prisma";
+import { userRecord } from "@/lib/records";
 
 export async function requireUser(req: NextRequest) {
-  await connectToDatabase();
-  const payload = getUserFromRequest(req);
-  const user = await User.findById(payload.userId);
+  const payload = await getUserFromRequest(req);
+  if (!payload) throw new Error("User not found");
+  const user = await prisma.user.findUnique({
+    where: { id: payload.id },
+    include: { smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 10 } }
+  });
   if (!user) throw new Error("User not found");
-  return { payload, user };
+  return { payload, user: userRecord(user) };
 }

@@ -3,7 +3,7 @@ import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
-import { User } from "@/models/User";
+import { User } from "@/lib/models";
 
 const schema = z.object({ password: z.string().min(8), forcePasswordReset: z.boolean().default(false) });
 

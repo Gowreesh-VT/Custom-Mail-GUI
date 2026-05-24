@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireAdmin } from "@/lib/admin";
-import { Email } from "@/models/Email";
+import { Email } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

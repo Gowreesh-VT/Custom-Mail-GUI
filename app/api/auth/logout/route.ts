@@ -5,8 +5,8 @@ import { logAudit } from "@/lib/audit";
 
 export async function POST(req: NextRequest) {
   try {
-    const user = getUserFromRequest(req);
-    await logAudit("user.logout", user.userId, {}, user.userId, req);
+    const user = await getUserFromRequest(req);
+    await logAudit("user.logout", user?.id, {}, user?.id, req);
   } catch {}
   const res = NextResponse.json({ success: true });
   res.cookies.set("accessToken", "", { path: "/", maxAge: 0 });

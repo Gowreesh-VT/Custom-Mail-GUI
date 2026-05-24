@@ -3,11 +3,11 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { jsonError } from "@/lib/utils";
-import { AuditLog } from "@/models/AuditLog";
-import { Email } from "@/models/Email";
-import { ScheduledEmail } from "@/models/ScheduledEmail";
-import { Template } from "@/models/Template";
-import { User } from "@/models/User";
+import { AuditLog } from "@/lib/models";
+import { Email } from "@/lib/models";
+import { ScheduledEmail } from "@/lib/models";
+import { Template } from "@/lib/models";
+import { User } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

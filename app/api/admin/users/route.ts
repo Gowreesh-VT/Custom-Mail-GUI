@@ -4,11 +4,11 @@ import { z } from "zod";
 import { requireAdmin } from "@/lib/admin";
 import { logAudit } from "@/lib/audit";
 import { jsonError } from "@/lib/utils";
-import { Draft } from "@/models/Draft";
-import { Email } from "@/models/Email";
-import { ScheduledEmail } from "@/models/ScheduledEmail";
-import { Template } from "@/models/Template";
-import { User } from "@/models/User";
+import { Draft } from "@/lib/models";
+import { Email } from "@/lib/models";
+import { ScheduledEmail } from "@/lib/models";
+import { Template } from "@/lib/models";
+import { User } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 
@@ -26,8 +26,8 @@ export async function GET(req: NextRequest) {
   if (filter === "admin") query.role = "admin";
   const users = await User.find(query).select("-passwordHash -smtpConfig.passwordEnc").sort({ createdAt: -1 }).lean();
   const counts = await Email.aggregate([{ $group: { _id: "$userId", sent: { $sum: { $cond: [{ $eq: ["$status", "sent"] }, 1, 0] } } } }]);
-  const sentMap = new Map(counts.map((item) => [String(item._id), item.sent]));
-  return Response.json({ success: true, users: users.map((user) => ({ ...user, sentTotal: sentMap.get(String(user._id)) || 0 })) });
+  const sentMap = new Map(counts.map((item: any) => [String(item._id), item.sent]));
+  return Response.json({ success: true, users: users.map((user: any) => ({ ...user, sentTotal: sentMap.get(String(user._id)) || 0 })) });
 }
 
 export async function POST(req: NextRequest) {

@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Announcement } from "@/models/Announcement";
+import { Announcement } from "@/lib/models";
 
 export const dynamic = "force-dynamic";
 

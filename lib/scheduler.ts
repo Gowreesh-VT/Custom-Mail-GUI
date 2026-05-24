@@ -1,75 +1,68 @@
-import { Agenda } from "agenda";
-import { MongoBackend } from "@agendajs/mongo-backend";
-import { connectToDatabase } from "@/lib/mongodb";
-import { Email } from "@/models/Email";
-import { ScheduledEmail } from "@/models/ScheduledEmail";
-import { User } from "@/models/User";
-import { sendMailForUser } from "@/lib/mailer";
+import { prisma } from "@/lib/prisma";
+import { toJson } from "@/lib/json-fields";
+import type { AttachmentRecord } from "@/types/models";
 
-let agenda: Agenda | null = null;
+export interface ScheduleEmailParams {
+  userId: string;
+  toAddresses: string[];
+  ccAddresses?: string[];
+  bccAddresses?: string[];
+  replyTo?: string;
+  subject: string;
+  bodyHtml: string;
+  attachments?: AttachmentRecord[];
+  scheduledAt: Date;
+}
 
-export async function getAgenda() {
-  if (agenda) return agenda;
-  await connectToDatabase();
-  if (!process.env.MONGODB_URI) throw new Error("MONGODB_URI is not configured");
-  agenda = new Agenda({
-    backend: new MongoBackend({ address: process.env.MONGODB_URI, collection: "agendaJobs" })
-  });
-
-  agenda.define("send scheduled email", async (job: any) => {
-    const { scheduledEmailId } = job.attrs.data as { scheduledEmailId: string };
-    const scheduled = await ScheduledEmail.findById(scheduledEmailId);
-    if (!scheduled || scheduled.status !== "pending") return;
-    const user = await User.findById(scheduled.userId);
-    if (!user) return;
-    try {
-      await sendMailForUser(user, {
-        to: scheduled.to,
-        cc: scheduled.cc,
-        bcc: scheduled.bcc,
-        subject: scheduled.subject,
-        bodyHtml: scheduled.bodyHtml,
-        attachments: scheduled.attachments as any
-      });
-      scheduled.status = "sent";
-      scheduled.sentAt = new Date();
-      await scheduled.save();
-      await Email.create({ userId: scheduled.userId, to: scheduled.to, cc: scheduled.cc, bcc: scheduled.bcc, subject: scheduled.subject, bodyHtml: scheduled.bodyHtml, attachments: scheduled.attachments, status: "sent", sentAt: new Date() });
-    } catch (error: any) {
-      scheduled.status = "failed";
-      scheduled.errorMsg = error.message;
-      await scheduled.save();
-      await Email.create({ userId: scheduled.userId, to: scheduled.to, cc: scheduled.cc, bcc: scheduled.bcc, subject: scheduled.subject, bodyHtml: scheduled.bodyHtml, attachments: scheduled.attachments, status: "failed", errorMsg: error.message, sentAt: new Date() });
+export async function scheduleEmail(params: ScheduleEmailParams): Promise<string> {
+  const scheduled = await prisma.scheduledEmail.create({
+    data: {
+      userId: params.userId,
+      toAddresses: toJson(params.toAddresses)!,
+      ccAddresses: toJson(params.ccAddresses),
+      bccAddresses: toJson(params.bccAddresses),
+      replyTo: params.replyTo ?? null,
+      subject: params.subject,
+      bodyHtml: params.bodyHtml,
+      attachments: toJson(params.attachments),
+      scheduledAt: params.scheduledAt,
+      status: "pending"
     }
   });
 
-  await agenda.start();
-  await reconcileMissedJobs();
-  return agenda;
+  return scheduled.id;
 }
 
-export async function scheduleEmailJob(scheduledEmailId: string, when: Date) {
-  const instance = await getAgenda();
-  const job = await instance.schedule(when, "send scheduled email", { scheduledEmailId });
-  return String(job.attrs._id);
+export async function cancelScheduledEmail(scheduledEmailId: string, userId: string): Promise<boolean> {
+  const result = await prisma.scheduledEmail.updateMany({
+    where: {
+      id: scheduledEmailId,
+      userId,
+      status: "pending"
+    },
+    data: { status: "cancelled" }
+  });
+
+  return result.count > 0;
 }
 
-export async function cancelAgendaJob(jobId?: string) {
-  if (!jobId) return;
-  const instance = await getAgenda();
-  await instance.cancel({ id: jobId });
-}
-
-async function reconcileMissedJobs() {
-  const now = new Date();
-  const pending = await ScheduledEmail.find({ status: "pending", scheduledAt: { $lt: now } }).limit(100);
-  for (const item of pending) {
-    const hoursOverdue = (now.getTime() - item.scheduledAt.getTime()) / 36e5;
-    if (hoursOverdue > 24) {
-      item.status = "missed";
-      await item.save();
-    } else {
-      await scheduleEmailJob(String(item._id), new Date(Date.now() + 1000));
+export async function rescheduleEmail(
+  scheduledEmailId: string,
+  userId: string,
+  newScheduledAt: Date
+): Promise<boolean> {
+  const result = await prisma.scheduledEmail.updateMany({
+    where: {
+      id: scheduledEmailId,
+      userId,
+      status: { in: ["pending", "failed"] }
+    },
+    data: {
+      scheduledAt: newScheduledAt,
+      status: "pending",
+      errorMsg: null
     }
-  }
+  });
+
+  return result.count > 0;
 }
