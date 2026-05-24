@@ -7,7 +7,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
-  <title>Workshop Reminder - {Event_name}</title>
+  <title>Workshop Reminder - {{Event_name}}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -164,6 +164,33 @@
       .content-padding {
         padding: 24px 16px !important;
       }
+
+      .text-title {
+        font-size: 20px !important;
+        line-height: 26px !important;
+      }
+
+      .text-subtitle {
+        font-size: 14px !important;
+        line-height: 20px !important;
+      }
+
+      .text-body {
+        font-size: 13px !important;
+        line-height: 20px !important;
+      }
+
+      .status-label {
+        font-size: 11px !important;
+      }
+
+      .social-link {
+        font-size: 11px !important;
+      }
+
+      .btn-primary a {
+        font-size: 14px !important;
+      }
       .title-font {
         font-size: 28px !important;
         line-height: 34px !important;
@@ -191,7 +218,7 @@
 </head>
 <body style="margin: 0; padding: 0; width: 100% !important; background-color: #0D0B14;">
   <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #0D0B14; opacity: 0;">
-    {Event_name} is starting soon. Check the date, time, and workshop checklist.
+    {{Event_name}} is starting soon. Check the date, time, and workshop checklist.
   </div>
   <table class="email-wrapper" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation" style="background-color: #0D0B14; table-layout: fixed;">
     <tr>
@@ -216,17 +243,17 @@
               <table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
                   <td align="center" style="padding: 18px 0 12px 0;">
-                    <img src="../mic-logo.png" alt="MIC" width="60"
+                    <img src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKENEfmQvcJYjwsBLCbSNUMGi76gpR4tA0OayfV" alt="MIC" width="60"
                       style="display: block; width: 60px; height: auto; border: 0; outline: none; text-decoration: none;">
                   </td>
                 </tr>
                 <tr>
                   <td align="center" style="padding: 0;">
                     <!--[if !mso]><!-->
-                    <img class="logo-dark" src="../banner_dark.png" alt="Microcraft - The Summer of Building" width="400"
+                    <img class="logo-dark" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKE1rbRSNtyNxaf5Isz24Y7uKnHvUEWjGwQ8So3" alt="Microcraft - The Summer of Building" width="400"
                       style="display: none; width: 100%; max-width: 400px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
                     <!--<![endif]-->
-                    <img class="logo-light" src="../banner_light.png" alt="Microcraft - The Summer of Building" width="400"
+                    <img class="logo-light" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEEBFgnrzHSbAfolN0Uc2Ti7Iud45D3KhyjMga" alt="Microcraft - The Summer of Building" width="400"
                       style="display: block; width: 100%; max-width: 400px; height: auto; border: 0; outline: none; text-decoration: none;">
                   </td>
                 </tr>
@@ -259,7 +286,7 @@
                       &gt; STATUS: GEARING UP
                     </span>
                     <h2 class="text-title" style="margin: 8px 0 0 0; font-family: system-ui, sans-serif; font-size: 22px; font-weight: 700; color: #FFFFFF;">
-                      {Event_name} is starting soon
+                      {{Event_name}} is starting soon
                     </h2>
                   </td>
                 </tr>
@@ -268,7 +295,7 @@
                 <tr>
                   <td style="padding-bottom: 24px;">
                     <p class="text-body" style="margin: 0; font-family: system-ui, sans-serif; font-size: 15px; line-height: 24px; color: #A19DB8;">
-                      Get ready! <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg> Our next interactive workshop session for {Event_name} is just around the corner. <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg> Please review the schedule and checklist below to ensure a smooth, hands-on building experience. <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/><line x1="12" x2="12" y1="17" y2="20"/></svg>
+                      Get ready! <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="m12 15-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg> Our next interactive workshop session for {{Event_name}} is just around the corner. <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg> Please review the schedule and checklist below to ensure a smooth, hands-on building experience. <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="2" x2="22" y1="20" y2="20"/><line x1="12" x2="12" y1="17" y2="20"/></svg>
                     </p>
                   </td>
                 </tr>
@@ -405,18 +432,18 @@
                               <td class="sponsor-logo-cell" align="center" style="padding: 0 16px; vertical-align: middle;">
                                 <a href="https://deepmind.google/technologies/gemini/" target="_blank" style="text-decoration: none;">
                                   <!--[if !mso]><!-->
-                                  <img class="logo-dark sponsor-logo" src="../gemini_logo_dark.png" alt="Google Gemini" width="157" height="22" style="display: none; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
+                                  <img class="logo-dark sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEIvxTiAPc5JbMFG4smKfNiBZauQt6l8OLEyp3" alt="Google Gemini" width="157" height="22" style="display: none; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
                                   <!--<![endif]-->
-                                  <img class="logo-light sponsor-logo" src="../gemini_logo_light.png" alt="Google Gemini" width="157" height="22" style="display: block; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none;">
+                                  <img class="logo-light sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEui3jPuz4GRJyS3pjE8dT6PNtDZVeIqY7LOAF" alt="Google Gemini" width="157" height="22" style="display: block; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none;">
                                 </a>
                               </td>
                               <!-- HackerRank Logo -->
                               <td class="sponsor-logo-cell" align="center" style="padding: 0 16px; vertical-align: middle;">
                                 <a href="https://www.hackerrank.com" target="_blank" style="text-decoration: none;">
                                   <!--[if !mso]><!-->
-                                  <img class="logo-dark sponsor-logo" src="../hackerrank_logo_dark.png" alt="HackerRank" width="210" height="22" style="display: none; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
+                                  <img class="logo-dark sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEVNWdFwbcWLMOEbv26Vl1fXqowPaKYyFxzrSj" alt="HackerRank" width="210" height="22" style="display: none; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
                                   <!--<![endif]-->
-                                  <img class="logo-light sponsor-logo" src="../hackerrank_logo_light.png" alt="HackerRank" width="210" height="22" style="display: block; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none;">
+                                  <img class="logo-light sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEkhQQMccaHF5hwn3uCcqPm4ORVQJW8SBvgpL0" alt="HackerRank" width="210" height="22" style="display: block; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none;">
                                 </a>
                               </td>
                             </tr>
@@ -463,7 +490,7 @@
                 </tr>
                 <tr>
                   <td align="center" class="footer-text" style="font-family: system-ui, sans-serif; font-size: 12px; line-height: 18px; color: #A19DB8;">
-                    This is an automated workshop reminder for {Event_name}.
+                    This is an automated workshop reminder for {{Event_name}}.
                     You are receiving this because you registered with Microsoft Innovations Club, VIT Chennai.
                   </td>
                 </tr>

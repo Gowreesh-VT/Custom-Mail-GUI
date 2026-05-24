@@ -8,7 +8,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <meta name="supported-color-schemes" content="light dark">
-  <title>Your Certificates - {Event_name}</title>
+  <title>Your Certificates - {{Event_name}}</title>
   <!--[if mso]>
   <noscript>
     <xml>
@@ -185,6 +185,29 @@
         padding: 24px 16px !important;
       }
 
+      .text-title {
+        font-size: 20px !important;
+        line-height: 26px !important;
+      }
+
+      .text-subtitle {
+        font-size: 14px !important;
+        line-height: 20px !important;
+      }
+
+      .text-body {
+        font-size: 13px !important;
+        line-height: 20px !important;
+      }
+
+      .social-link {
+        font-size: 11px !important;
+      }
+
+      .download-btn {
+        font-size: 12px !important;
+      }
+
       .title-font {
         font-size: 28px !important;
         line-height: 34px !important;
@@ -220,7 +243,7 @@
 
 <body style="margin: 0; padding: 0; width: 100% !important; background-color: #0D0B14;">
   <div style="display: none; max-height: 0; overflow: hidden; mso-hide: all; font-size: 1px; line-height: 1px; color: #0D0B14; opacity: 0;">
-    Your certificates for {Event_name} are ready to download.
+    Your certificates for {{Event_name}} are ready to download.
   </div>
   <table class="email-wrapper" width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation"
     style="background-color: #0D0B14; table-layout: fixed;">
@@ -248,17 +271,17 @@
               <table width="100%" border="0" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
                   <td align="center" style="padding: 18px 0 12px 0;">
-                    <img src="../mic-logo.png" alt="MIC" width="60"
+                    <img src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKENEfmQvcJYjwsBLCbSNUMGi76gpR4tA0OayfV" alt="MIC" width="60"
                       style="display: block; width: 60px; height: auto; border: 0; outline: none; text-decoration: none;">
                   </td>
                 </tr>
                 <tr>
                   <td align="center" style="padding: 0;">
                     <!--[if !mso]><!-->
-                    <img class="logo-dark" src="../banner_dark.png" alt="Microcraft - The Summer of Building" width="400"
+                    <img class="logo-dark" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKE1rbRSNtyNxaf5Isz24Y7uKnHvUEWjGwQ8So3" alt="Microcraft - The Summer of Building" width="400"
                       style="display: none; width: 100%; max-width: 400px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
                     <!--<![endif]-->
-                    <img class="logo-light" src="../banner_light.png" alt="Microcraft - The Summer of Building" width="400"
+                    <img class="logo-light" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEEBFgnrzHSbAfolN0Uc2Ti7Iud45D3KhyjMga" alt="Microcraft - The Summer of Building" width="400"
                       style="display: block; width: 100%; max-width: 400px; height: auto; border: 0; outline: none; text-decoration: none;">
                   </td>
                 </tr>
@@ -304,7 +327,7 @@
                   <td style="padding-bottom: 28px;">
                     <p class="text-body"
                       style="margin: 0; font-family: system-ui, sans-serif; font-size: 15px; line-height: 24px; color: #A19DB8;">
-                      You have successfully completed the <strong>{Event_name}</strong>! <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/></svg> Through
+                      You have successfully completed the <strong>{{Event_name}}</strong>! <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275Z"/></svg> Through
                       hands-on challenges and dedicated efforts, you have proven your technical competence and
                       determination. <svg aria-hidden="true" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block; vertical-align: middle; margin-left: 4px; margin-right: 4px; position: relative; top: -1px;"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
                     </p>
@@ -452,18 +475,18 @@
                               <td class="sponsor-logo-cell" align="center" style="padding: 0 16px; vertical-align: middle;">
                                 <a href="https://deepmind.google/technologies/gemini/" target="_blank" style="text-decoration: none;">
                                   <!--[if !mso]><!-->
-                                  <img class="logo-dark sponsor-logo" src="../gemini_logo_dark.png" alt="Google Gemini" width="157" height="22" style="display: none; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
+                                  <img class="logo-dark sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEIvxTiAPc5JbMFG4smKfNiBZauQt6l8OLEyp3" alt="Google Gemini" width="157" height="22" style="display: none; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
                                   <!--<![endif]-->
-                                  <img class="logo-light sponsor-logo" src="../gemini_logo_light.png" alt="Google Gemini" width="157" height="22" style="display: block; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none;">
+                                  <img class="logo-light sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEui3jPuz4GRJyS3pjE8dT6PNtDZVeIqY7LOAF" alt="Google Gemini" width="157" height="22" style="display: block; width: 157px; max-width: 157px; height: auto; border: 0; outline: none; text-decoration: none;">
                                 </a>
                               </td>
                               <!-- HackerRank Logo -->
                               <td class="sponsor-logo-cell" align="center" style="padding: 0 16px; vertical-align: middle;">
                                 <a href="https://www.hackerrank.com" target="_blank" style="text-decoration: none;">
                                   <!--[if !mso]><!-->
-                                  <img class="logo-dark sponsor-logo" src="../hackerrank_logo_dark.png" alt="HackerRank" width="210" height="22" style="display: none; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
+                                  <img class="logo-dark sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEVNWdFwbcWLMOEbv26Vl1fXqowPaKYyFxzrSj" alt="HackerRank" width="210" height="22" style="display: none; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none; mso-hide: all;">
                                   <!--<![endif]-->
-                                  <img class="logo-light sponsor-logo" src="../hackerrank_logo_light.png" alt="HackerRank" width="210" height="22" style="display: block; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none;">
+                                  <img class="logo-light sponsor-logo" src="https://h8z6stjynz.ufs.sh/f/nEev6VX4XfKEkhQQMccaHF5hwn3uCcqPm4ORVQJW8SBvgpL0" alt="HackerRank" width="210" height="22" style="display: block; width: 210px; max-width: 210px; height: auto; border: 0; outline: none; text-decoration: none;">
                                 </a>
                               </td>
                             </tr>
@@ -516,7 +539,7 @@
                 <tr>
                   <td align="center" class="footer-text"
                     style="font-family: system-ui, sans-serif; font-size: 12px; line-height: 18px; color: #A19DB8;">
-                    This is an automated credential delivery for {Event_name}.
+                    This is an automated credential delivery for {{Event_name}}.
                     You are receiving this because you participated with Microsoft Innovations Club, VIT Chennai.
                   </td>
                 </tr>
