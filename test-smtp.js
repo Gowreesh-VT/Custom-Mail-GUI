@@ -1,15 +1,15 @@
 const nodemailer = require('nodemailer');
+const dotenv = require('dotenv');
 const fs = require('fs');
 
-const envContent = fs.readFileSync('.env.local', 'utf8');
-envContent.split('\n').forEach(line => {
-    const match = line.match(/^([^=:#]+)=(.*)$/);
-    if (match) {
-        const key = match[1].trim();
-        const value = match[2].trim();
-        process.env[key] = value;
-    }
-});
+const envLocalPath = '.env.local';
+const envPath = '.env';
+
+if (fs.existsSync(envLocalPath)) {
+    dotenv.config({ path: envLocalPath });
+} else if (fs.existsSync(envPath)) {
+    dotenv.config({ path: envPath });
+}
 
 console.log('📧 Testing SMTP Configuration...\n');
 
@@ -18,7 +18,7 @@ console.log('- Host:', process.env.SMTP_HOST);
 console.log('- Port:', process.env.SMTP_PORT);
 console.log('- User:', process.env.SMTP_USER);
 console.log('- Password:', process.env.SMTP_PASSWORD ? '***' + process.env.SMTP_PASSWORD.slice(-4) : 'NOT SET');
-console.log('- From:', process.env.SMTP_FROM);
+console.log('- From:', process.env.SMTP_FROM_EMAIL || process.env.SMTP_FROM || process.env.SMTP_USER);
 console.log('\n');
 
 const transporter = nodemailer.createTransport({

