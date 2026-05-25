@@ -8,6 +8,7 @@ const CATEGORY: Record<string, AuditCategory> = {
   user: "AUTH",
   auth: "AUTH",
   email: "EMAIL",
+  certificate: "ADMIN",
   admin: "ADMIN"
 };
 

@@ -47,6 +47,7 @@ model User {
   dismissedAnnouncements AnnouncementDismissal[]
   emailEvents        EmailEvent[]
   qrCampaigns        QrCampaign[]
+  certificateTemplates CertificateTemplate[]
 }
 
 // ---------------------------------------------------------------------------
@@ -404,4 +405,59 @@ model QrCampaignOperator {
 
   @@unique([campaignId, operatorId])
   @@index([operatorId])
+}
+
+model CertificateTemplate {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?
+
+  pdfBase64       String
+  pdfFileName     String
+  pdfSizeBytes    Int
+
+  pageWidth       Float
+  pageHeight      Float
+  pageCount       Int       @default(1)
+
+  fields          String    @default("[]")
+  previewImage    String?
+
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  generations     CertificateGeneration[]
+
+  @@index([userId])
+  @@index([userId, isActive])
+  @@index([updatedAt])
+}
+
+model CertificateGeneration {
+  id                    String               @id @default(cuid())
+  templateId            String
+  template              CertificateTemplate  @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  userId                String
+
+  bulkJobId             String?
+
+  recipientEmail        String
+  recipientName         String?
+  mergeData             String?
+
+  status                String    @default("pending")
+  errorMsg              String?
+
+  generatedAt           DateTime?
+  createdAt             DateTime  @default(now())
+
+  @@index([templateId])
+  @@index([userId])
+  @@index([status])
+  @@index([createdAt])
+  @@index([recipientEmail])
 }
