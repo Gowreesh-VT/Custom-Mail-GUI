@@ -61,3 +61,11 @@ export async function generateTemplateThumbnail(bodyHtml: string) {
 export function replaceTemplateValues(input: string, values: Record<string, string>) {
   return input.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_, key) => values[key] ?? `{{${key}}}`);
 }
+
+export function replaceQrPlaceholdersForPreview(html: string) {
+  return html.replace(/<img\b([^>]*?)src=(["'])\{\{(qr_[a-z_]+)\}\}\2([^>]*)>/gi, (_tag, before, _quote, name, after) => {
+    const width = /width=(["']?)(\d+)/i.exec(`${before} ${after}`)?.[2] || "200";
+    const height = /height=(["']?)(\d+)/i.exec(`${before} ${after}`)?.[2] || width;
+    return `<div style="width:${width}px;height:${height}px;background:#f0f0f0;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:12px;color:#666;text-align:center;">QR: {{${name}}}<br/>will appear here</div>`;
+  });
+}

@@ -1,4 +1,5 @@
 import { applyMergeFields, extractMergeFields } from "@/lib/utils";
+import { isQrPlaceholder } from "@/lib/qr-placeholders";
 
 export interface InvalidImageReference {
   line: number;
@@ -8,6 +9,14 @@ export interface InvalidImageReference {
 
 export function detectTemplateFields(subjectLine: string, bodyHtml: string) {
   return extractMergeFields(`${subjectLine}\n${bodyHtml}`);
+}
+
+export function detectTemplateFieldGroups(subjectLine: string, bodyHtml: string) {
+  const fields = detectTemplateFields(subjectLine, bodyHtml);
+  return {
+    textFields: fields.filter((field) => !/^qr_[a-z_]+$/.test(field)),
+    qrFields: fields.filter((field) => /^qr_[a-z_]+$/.test(field))
+  };
 }
 
 export function renderTemplateHtml(input: string, values: Record<string, string>) {
@@ -20,6 +29,7 @@ export function validateExternalImageUrls(bodyHtml: string): InvalidImageReferen
   for (const match of bodyHtml.matchAll(imageRegex)) {
     const tag = match[0];
     const src = match[2]?.trim() || "";
+    if (isQrPlaceholder(src)) continue;
     if (!src.toLowerCase().startsWith("https://")) {
       invalid.push({
         line: lineForIndex(bodyHtml, match.index || 0),
