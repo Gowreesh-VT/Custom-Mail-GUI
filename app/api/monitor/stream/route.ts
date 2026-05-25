@@ -1,8 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Email } from "@/lib/models";
-import { ScheduledEmail } from "@/lib/models";
-import { toJson } from "@/lib/json-fields";
+import { prisma } from "@/lib/prisma";
+import { toJson, toStringArray } from "@/lib/json-fields";
 
 export const dynamic = "force-dynamic";
 
@@ -17,12 +16,12 @@ export async function GET(req: NextRequest) {
       send({ type: "info", message: "Connected to activity stream", at: new Date().toISOString() });
       const timer = setInterval(async () => {
         const [emails, scheduled] = await Promise.all([
-          Email.find({ userId: user._id, sentAt: { $gt: lastSeen } }).sort({ sentAt: 1 }).limit(20).lean(),
-          ScheduledEmail.find({ userId: user._id, updatedAt: { $gt: lastSeen } }).sort({ updatedAt: 1 }).limit(20).lean()
+          prisma.email.findMany({ where: { userId: String(user._id), sentAt: { gt: lastSeen } }, orderBy: { sentAt: "asc" }, take: 20 }),
+          prisma.scheduledEmail.findMany({ where: { userId: String(user._id), updatedAt: { gt: lastSeen } }, orderBy: { updatedAt: "asc" }, take: 20 })
         ]);
         lastSeen = new Date();
-        emails.forEach((email: any) => send({ type: email.status, to: email.to?.[0], subject: email.subject, error: email.errorMsg, at: email.sentAt }));
-        scheduled.forEach((item: any) => send({ type: "scheduled", subject: item.subject, status: item.status, at: item.updatedAt }));
+        emails.forEach((email) => send({ type: email.status, to: toStringArray(email.toAddresses)[0], subject: email.subject, error: email.errorMsg, at: email.sentAt }));
+        scheduled.forEach((item) => send({ type: "scheduled", subject: item.subject, status: item.status, at: item.updatedAt }));
       }, 5000);
       req.signal.addEventListener("abort", () => {
         clearInterval(timer);

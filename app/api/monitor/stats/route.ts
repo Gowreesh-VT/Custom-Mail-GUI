@@ -1,7 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Email } from "@/lib/models";
-import { ScheduledEmail } from "@/lib/models";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -24,16 +23,16 @@ export async function GET(req: NextRequest) {
   const weekStart = new Date(now); weekStart.setDate(now.getDate() - 7);
 
   const [sentToday, sentWeek, sentMonth, failedLast7, pendingScheduled, bulkJobsRun, prevWeekSent, prevMonthSent, opensWeek, clicksWeek] = await Promise.all([
-    Email.countDocuments({ userId: user._id, status: "sent", sentAt: { $gte: today } }),
-    Email.countDocuments({ userId: user._id, status: "sent", sentAt: { $gte: week } }),
-    Email.countDocuments({ userId: user._id, status: "sent", sentAt: { $gte: month } }),
-    Email.countDocuments({ userId: user._id, status: "failed", acknowledged: false, sentAt: { $gte: failed7 } }),
-    ScheduledEmail.countDocuments({ userId: user._id, status: "pending" }),
-    Email.countDocuments({ userId: user._id, isBulk: true, sentAt: { $gte: month } }),
-    Email.countDocuments({ userId: user._id, status: "sent", sentAt: { $gte: previousWeek, $lt: week } }),
-    Email.countDocuments({ userId: user._id, status: "sent", sentAt: { $gte: previousMonth, $lt: month } }),
-    Email.aggregate([{ $match: { userId: user._id, sentAt: { $gte: weekStart } } }, { $group: { _id: null, total: { $sum: "$openCount" } } }]),
-    Email.aggregate([{ $match: { userId: user._id, sentAt: { $gte: weekStart } } }, { $group: { _id: null, total: { $sum: "$clickCount" } } }])
+    prisma.email.count({ where: { userId: String(user._id), status: "sent", sentAt: { gte: today } } }),
+    prisma.email.count({ where: { userId: String(user._id), status: "sent", sentAt: { gte: week } } }),
+    prisma.email.count({ where: { userId: String(user._id), status: "sent", sentAt: { gte: month } } }),
+    prisma.email.count({ where: { userId: String(user._id), status: "failed", acknowledged: false, sentAt: { gte: failed7 } } }),
+    prisma.scheduledEmail.count({ where: { userId: String(user._id), status: "pending" } }),
+    prisma.email.count({ where: { userId: String(user._id), isBulk: true, sentAt: { gte: month } } }),
+    prisma.email.count({ where: { userId: String(user._id), status: "sent", sentAt: { gte: previousWeek, lt: week } } }),
+    prisma.email.count({ where: { userId: String(user._id), status: "sent", sentAt: { gte: previousMonth, lt: month } } }),
+    prisma.email.aggregate({ where: { userId: String(user._id), sentAt: { gte: weekStart } }, _sum: { openCount: true } }),
+    prisma.email.aggregate({ where: { userId: String(user._id), sentAt: { gte: weekStart } }, _sum: { clickCount: true } })
   ]);
 
   const delta = (current: number, previous: number) => (previous === 0 ? (current > 0 ? 100 : 0) : Math.round(((current - previous) / previous) * 100));
@@ -46,8 +45,8 @@ export async function GET(req: NextRequest) {
       { key: "failed", label: "Failed Last 7 Days", value: failedLast7, delta: 0 },
       { key: "scheduled", label: "Pending Scheduled", value: pendingScheduled, delta: 0 },
       { key: "bulk", label: "Bulk Jobs Run", value: bulkJobsRun, delta: 0 },
-      { key: "opens", label: "Total Opens This Week", value: opensWeek[0]?.total || 0, delta: 0 },
-      { key: "clicks", label: "Total Clicks This Week", value: clicksWeek[0]?.total || 0, delta: 0 }
+      { key: "opens", label: "Total Opens This Week", value: opensWeek._sum.openCount || 0, delta: 0 },
+      { key: "clicks", label: "Total Clicks This Week", value: clicksWeek._sum.clickCount || 0, delta: 0 }
     ]
   });
 }
