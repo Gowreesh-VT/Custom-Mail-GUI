@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { BarChart3, Clock, FileText, Layers, LogOut, Mail, Menu, Moon, PenLine, Send, Settings, Sun } from "lucide-react";
+import { BarChart3, Clock, FileText, Layers, LogOut, Mail, Menu, Moon, PenLine, QrCode, Send, Settings, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -16,6 +16,7 @@ const nav = [
   { href: "/drafts", label: "Drafts", icon: FileText },
   { href: "/sent", label: "Sent", icon: Send },
   { href: "/templates", label: "Templates", icon: Layers },
+  { href: "/qr", label: "QR Codes", icon: QrCode },
   { href: "/scheduled", label: "Scheduled", icon: Clock },
   { href: "/bulk", label: "Bulk", icon: Mail },
   { href: "/settings", label: "Settings", icon: Settings }

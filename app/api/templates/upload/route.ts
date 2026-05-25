@@ -3,7 +3,9 @@ import { z } from "zod";
 import { requireUser } from "@/lib/api";
 import { jsonError } from "@/lib/utils";
 import { detectTemplateFields, formatInvalidImagesMessage, isValidHtmlTemplate, validateExternalImageUrls } from "@/lib/template-html";
-import { Template } from "@/lib/models";
+import { prisma } from "@/lib/prisma";
+import { toJson } from "@/lib/json-fields";
+import { templateRecord } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
@@ -24,17 +26,18 @@ export async function POST(req: NextRequest) {
     if (invalidImages.length) return jsonError(formatInvalidImagesMessage(invalidImages), 400, "INVALID_TEMPLATE_IMAGES");
     if (!isValidHtmlTemplate(body.bodyHtml)) return jsonError("Template HTML is empty or invalid", 400, "INVALID_TEMPLATE_HTML");
     const mergeFields = Array.from(new Set((body.mergeFields.length ? body.mergeFields : detectTemplateFields(body.subjectLine, body.bodyHtml)).map((field) => field.trim()).filter(Boolean)));
-    const template = await Template.create({
-      userId: user._id,
-      name: body.name,
-      description: body.description,
-      subjectLine: body.subjectLine,
-      subject: body.subjectLine,
-      bodyHtml: body.bodyHtml,
-      mergeFields,
-      previewImage: body.previewImage
+    const template = await prisma.template.create({
+      data: {
+        userId: String(user._id),
+        name: body.name,
+        description: body.description,
+        subjectLine: body.subjectLine,
+        bodyHtml: body.bodyHtml,
+        mergeFields: toJson(mergeFields),
+        previewImage: body.previewImage
+      }
     });
-    return Response.json({ success: true, template });
+    return Response.json({ success: true, template: templateRecord(template) });
   } catch (error: any) {
     return jsonError(error.message || "Unable to upload template", 400);
   }
