@@ -19,7 +19,7 @@ const schema = z.object({
   bodyHtml: z.string().default(""),
   trackingEnabled: z.boolean().default(true),
   attachments: z.array(z.object({ name: z.string(), size: z.number().optional(), mimeType: z.string().optional(), path: z.string().optional() })).optional(),
-  qrConfig: z.record(z.object({
+  qrConfig: z.record(z.string(), z.object({
     campaignId: z.string().optional(),
     contentType: z.string().optional(),
     name: z.string().optional(),
@@ -29,8 +29,8 @@ const schema = z.object({
     width: z.number().optional(),
     height: z.number().optional(),
     alt: z.string().optional(),
-    fields: z.record(z.string()).optional(),
-    staticFields: z.record(z.string()).optional(),
+    fields: z.record(z.string(), z.string()).optional(),
+    staticFields: z.record(z.string(), z.string()).optional(),
     urlTemplate: z.string().optional(),
     textTemplate: z.string().optional()
   })).optional()

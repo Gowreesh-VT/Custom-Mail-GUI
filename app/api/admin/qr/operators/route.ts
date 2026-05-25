@@ -25,7 +25,9 @@ export async function POST(req: NextRequest) {
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError("Valid email is required", 400);
     if (!/^\d{4,6}$/.test(pin)) return jsonError("PIN must be 4-6 digits", 400);
 
-    const campaignIds = Array.isArray(body.campaignIds) ? Array.from(new Set(body.campaignIds.map((id: string) => String(id)))) : [];
+    const campaignIds: string[] = Array.isArray(body.campaignIds)
+      ? Array.from(new Set(body.campaignIds.map((id: unknown) => String(id))))
+      : [];
     const operator = await prisma.qrOperator.create({
       data: {
         name,

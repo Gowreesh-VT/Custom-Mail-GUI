@@ -10,8 +10,17 @@ export const dynamic = "force-dynamic";
 const MAX_PER_RUN = 20;
 
 export async function GET(req: NextRequest) {
+  return processScheduled(req);
+}
+
+export async function POST(req: NextRequest) {
+  return processScheduled(req);
+}
+
+async function processScheduled(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const token = authHeader?.replace("Bearer ", "");
+  if (token !== process.env.CRON_SECRET) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
