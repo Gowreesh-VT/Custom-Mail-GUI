@@ -2,7 +2,7 @@ name: Process Scheduled Emails
 
 on:
   schedule:
-    - cron: '* * * * *'
+    - cron: '*/30 * * * *'
   workflow_dispatch:
 
 jobs:
