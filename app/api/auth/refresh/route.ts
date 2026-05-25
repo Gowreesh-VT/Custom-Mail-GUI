@@ -11,8 +11,9 @@ export async function POST(req: NextRequest) {
     const payload = verifyToken(refresh, "refresh");
     const user = await prisma.user.findUnique({ where: { id: payload.userId } });
     if (!user || user.isActive === false) return jsonError("Refresh token expired", 401, "REFRESH_EXPIRED");
+    const role = user.role === "admin" ? "admin" : "user";
     const res = NextResponse.json({ success: true });
-    res.cookies.set("accessToken", signToken({ userId: payload.userId, email: payload.email, role: user.role || "user", forcePasswordReset: Boolean(user.forcePasswordReset) }, "access"), cookieOptions(15 * 60));
+    res.cookies.set("accessToken", signToken({ userId: payload.userId, email: payload.email, role, forcePasswordReset: Boolean(user.forcePasswordReset) }, "access"), cookieOptions(15 * 60));
     return res;
   } catch {
     return jsonError("Refresh token expired", 401, "REFRESH_EXPIRED");
