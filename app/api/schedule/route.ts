@@ -3,8 +3,9 @@ import { z } from "zod";
 import { requireUser } from "@/lib/api";
 import { parseList } from "@/lib/utils";
 import { scheduleEmail } from "@/lib/scheduler";
-import { ScheduledEmail } from "@/lib/models";
 import { logAudit } from "@/lib/audit";
+import { prisma } from "@/lib/prisma";
+import { scheduledRecord } from "@/lib/records";
 
 const schema = z.object({
   to: z.union([z.string(), z.array(z.string())]),
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     attachments: body.attachments,
     scheduledAt: new Date(body.scheduledAt)
   });
-  const scheduled = await ScheduledEmail.findById(scheduledId);
+  const scheduled = scheduledRecord(await prisma.scheduledEmail.findUnique({ where: { id: scheduledId } }));
   await logAudit("email.scheduled", String(user._id), { subject: scheduled.subject, scheduledAt: scheduled.scheduledAt }, String(scheduled._id), req);
   return Response.json({ success: true, scheduled });
 }

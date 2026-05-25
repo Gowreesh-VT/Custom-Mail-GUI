@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/api";
 import { encryptText } from "@/lib/encrypt";
 import { jsonError } from "@/lib/utils";
 import { isGlobalSmtpActive } from "@/lib/mailer";
+import { prisma } from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
@@ -46,18 +47,21 @@ export async function POST(req: NextRequest) {
   try {
     const { user } = await requireUser(req);
     const body = schema.parse(await req.json());
-    user.smtpConfig = {
-      host: body.host,
-      port: body.port,
-      username: body.username,
-      passwordEnc: body.password ? encryptText(body.password) : user.smtpConfig?.passwordEnc,
-      fromName: body.fromName,
-      fromEmail: body.fromEmail,
-      encryption: body.encryption,
-      rejectUnauth: body.rejectUnauth
-    };
-    if (!user.smtpConfig.passwordEnc) return jsonError("SMTP password is required", 400, "SMTP_PASSWORD_REQUIRED");
-    await user.save();
+    const passwordEnc = body.password ? encryptText(body.password) : user.smtpConfig?.passwordEnc;
+    if (!passwordEnc) return jsonError("SMTP password is required", 400, "SMTP_PASSWORD_REQUIRED");
+    await prisma.user.update({
+      where: { id: String(user._id) },
+      data: {
+        smtpHost: body.host,
+        smtpPort: body.port,
+        smtpUsername: body.username,
+        smtpPasswordEnc: passwordEnc,
+        smtpFromName: body.fromName,
+        smtpFromEmail: body.fromEmail,
+        smtpEncryption: body.encryption,
+        smtpRejectUnauth: body.rejectUnauth
+      }
+    });
     return Response.json({ success: true });
   } catch (error: any) {
     return jsonError(error.message || "Unable to save SMTP settings", 400);
