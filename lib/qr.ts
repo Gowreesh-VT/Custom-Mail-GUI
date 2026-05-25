@@ -1,10 +1,33 @@
 import QRCode from "qrcode";
 import sharp from "sharp";
 import type { PrismaClient, QrCampaign, QrCode } from "@prisma/client";
+import { prisma } from "@/lib/prisma";
 import { toJson } from "@/lib/json-fields";
 export { detectQrPlaceholders, isQrPlaceholder } from "@/lib/qr-placeholders";
 
 export type QrFields = Record<string, string | number | null | undefined>;
+
+export type QrFieldConfig = {
+  placeholderName: string;
+  campaignId?: string;
+  campaignType?: string;
+  contentType?: string;
+  fieldMappings?: Record<string, { source: "csv" | "static"; column?: string; value?: string }>;
+  fields?: Record<string, string>;
+  staticFields?: Record<string, string>;
+  urlTemplate?: string;
+  textTemplate?: string;
+  url?: string;
+  text?: string;
+  width?: number;
+  height?: number;
+  alt?: string;
+};
+
+export type RecipientRow = {
+  email: string;
+  data: Record<string, string>;
+};
 
 export type DecodedQrData =
   | { isSystemQr: true; id: string; fields: Record<string, string> }
@@ -174,4 +197,102 @@ export async function createQrRecord(
 
 export function replaceMergeFields(template: string, data: Record<string, string>) {
   return template.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (_, key) => data[key] ?? "");
+}
+
+const fallbackQrHtml =
+  "<div style=\"width:200px;height:200px;background:#f5f5f5;border:1px solid #ddd;display:flex;align-items:center;justify-content:center;font-size:11px;color:#999;text-align:center;padding:8px;\">QR unavailable</div>";
+
+export async function replaceQrPlaceholders(
+  html: string,
+  qrFieldConfigs: QrFieldConfig[],
+  recipient: RecipientRow,
+  userId: string,
+  options?: { onError?: (error: Error, config: QrFieldConfig) => void }
+) {
+  let rendered = html;
+  for (const config of qrFieldConfigs) {
+    try {
+      const campaignId = String(config.campaignId || "");
+      if (!campaignId) throw new Error("Missing campaign id");
+      const contentType = await resolveContentType(campaignId, config);
+      const fields = buildFieldMap(config, recipient.data);
+      const encodedData = buildEncodedPayload(contentType, config, recipient.data, fields);
+      const qrCode = await createQrRecord(prisma, {
+        campaignId,
+        userId,
+        contentType,
+        encodedData,
+        recipientEmail: recipient.email,
+        recipientName: recipient.data.name || recipient.data.NAME || null,
+        mergeData: recipient.data
+      });
+      const imageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}${qrCode.imageUrl || `/api/qr/img/${qrCode.id}`}`;
+      const width = Number(config.width) || 200;
+      const height = Number(config.height) || width;
+      const alt = String(config.alt || "QR Code");
+      rendered = replaceQrPlaceholderHtml(
+        rendered,
+        config.placeholderName,
+        `<img src=\"${imageUrl}\" width=\"${width}\" height=\"${height}\" alt=\"${alt}\" style=\"display:block;\" />`
+      );
+    } catch (error: any) {
+      const err = error instanceof Error ? error : new Error(String(error || "QR generation failed"));
+      options?.onError?.(err, config);
+      rendered = replaceQrPlaceholderHtml(rendered, config.placeholderName, fallbackQrHtml);
+    }
+  }
+  return rendered;
+}
+
+function replaceQrPlaceholderHtml(html: string, placeholderName: string, replacement: string) {
+  if (!placeholderName) return html;
+  const escaped = placeholderName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
+  const imgPattern = new RegExp(`<img[^>]*src=["']\\{\\{\s*${escaped}\s*\\}\\}["'][^>]*>`, "gi");
+  if (imgPattern.test(html)) {
+    return html.replace(imgPattern, replacement);
+  }
+  const tokenPattern = new RegExp(`\\{\\{\s*${escaped}\s*\\}\\}`, "g");
+  return html.replace(tokenPattern, replacement);
+}
+
+async function resolveContentType(campaignId: string, config: QrFieldConfig) {
+  const hint = config.contentType || config.campaignType;
+  if (hint) return hint;
+  const campaign = await prisma.qrCampaign.findUnique({ where: { id: campaignId }, select: { type: true } });
+  if (!campaign?.type) throw new Error("Campaign not found");
+  return campaign.type;
+}
+
+function buildFieldMap(config: QrFieldConfig, data: Record<string, string>) {
+  const output: Record<string, string> = {};
+  if (config.fieldMappings) {
+    for (const [key, mapping] of Object.entries(config.fieldMappings)) {
+      output[key.toUpperCase()] = mapping.source === "static" ? String(mapping.value || "") : String(data[mapping.column || ""] || "");
+    }
+  }
+  if (config.fields) {
+    for (const [field, mapping] of Object.entries(config.fields)) {
+      output[field.toUpperCase()] = String(data[mapping] || "");
+    }
+  }
+  if (config.staticFields) {
+    for (const [field, value] of Object.entries(config.staticFields)) {
+      output[field.toUpperCase()] = String(value || "");
+    }
+  }
+  if (!output.NAME && (data.name || data.NAME)) output.NAME = String(data.name || data.NAME || "");
+  if (!output.EMAIL && data.email) output.EMAIL = String(data.email || "");
+  return output;
+}
+
+function buildEncodedPayload(contentType: string, config: QrFieldConfig, data: Record<string, string>, fields: QrFields) {
+  if (contentType === "checkin") return encodeCheckinData(PENDING_QR_ID, fields);
+  if (contentType === "url") {
+    const template = config.urlTemplate || config.url || data.url || "";
+    const resolved = replaceMergeFields(String(template), data);
+    return encodeUrlData(PENDING_QR_ID, resolved, fields);
+  }
+  const template = config.textTemplate || config.text || data.text || "";
+  const resolved = replaceMergeFields(String(template), data);
+  return encodeTextData(PENDING_QR_ID, resolved, fields);
 }

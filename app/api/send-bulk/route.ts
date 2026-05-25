@@ -7,8 +7,7 @@ import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
 import { fromJson, toJson } from "@/lib/json-fields";
 import { prisma } from "@/lib/prisma";
-import { createQrForBody, objectToStrings } from "@/lib/qr-api";
-import { detectQrPlaceholders, replaceMergeFields } from "@/lib/qr";
+import { detectQrPlaceholders, replaceQrPlaceholders, type QrFieldConfig } from "@/lib/qr";
 
 const encoder = new TextEncoder();
 
@@ -32,14 +31,27 @@ export async function POST(req: NextRequest) {
   const stream = new ReadableStream({
     async start(controller) {
       controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length })}\n`));
+      let failedQrCount = 0;
       for (let index = 0; index < rows.length; index++) {
         if (req.signal.aborted) break;
         const row = rows[index];
         const values = valuesFromMap(row, columnMap);
+        const subject = applyMergeFields(template.subjectLine || template.name, values);
+        let bodyHtml = applyMergeFields(template.bodyHtml, values);
+        const recipient = { email: row.email, data: { ...row, ...values } };
+        const qrFieldConfigs = buildQrFieldConfigs(qrConfig, bodyHtml);
+        if (qrFieldConfigs.length) {
+          bodyHtml = await replaceQrPlaceholders(bodyHtml, qrFieldConfigs, recipient, String(user._id), {
+            onError: (error, config) => {
+              failedQrCount += 1;
+              controller.enqueue(encoder.encode(`${toJson({ type: "qr_error", recipient: row.email, placeholder: config.placeholderName, error: error.message })}\n`));
+            }
+          });
+        }
         const payload = {
           to: [row.email],
-          subject: applyMergeFields(template.subjectLine || template.name, values),
-          bodyHtml: await renderBulkQrHtml(applyMergeFields(template.bodyHtml, values), qrConfig, row, values, String(user._id))
+          subject,
+          bodyHtml
         };
         try {
           const email = await prisma.email.create({
@@ -58,7 +70,7 @@ export async function POST(req: NextRequest) {
           });
           await sendMailForUser(user, { ...payload, bodyHtml: injectTracking(payload.bodyHtml, email.id, true) });
           await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, isBulk: true }, email.id, req);
-          controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email })}\n`));
+          controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email, failedQrCount })}\n`));
         } catch (error: any) {
           const email = await prisma.email.create({
             data: {
@@ -76,12 +88,12 @@ export async function POST(req: NextRequest) {
             }
           });
           await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: error.message, isBulk: true }, email.id, req);
-          controller.enqueue(encoder.encode(`${toJson({ type: "failed", index, email: row.email, error: error.message })}\n`));
+          controller.enqueue(encoder.encode(`${toJson({ type: "failed", index, email: row.email, error: error.message, failedQrCount })}\n`));
         }
         if (index < rows.length - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));
       }
       await logAudit(req.signal.aborted ? "email.bulk_stopped" : "email.bulk_completed", String(user._id), { recipientCount: rows.length, templateId }, undefined, req);
-      controller.enqueue(encoder.encode(`${toJson({ type: req.signal.aborted ? "stopped" : "completed" })}\n`));
+      controller.enqueue(encoder.encode(`${toJson({ type: req.signal.aborted ? "stopped" : "completed", failedQrCount })}\n`));
       controller.close();
     }
   });
@@ -98,43 +110,9 @@ function valuesFromMap(row: Record<string, string>, columnMap: Record<string, st
   return Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, row[column] || ""]));
 }
 
-async function renderBulkQrHtml(
-  html: string,
-  qrConfig: Record<string, any>,
-  row: Record<string, string>,
-  values: Record<string, string>,
-  userId: string
-) {
-  let rendered = html;
-  for (const placeholder of detectQrPlaceholders(html)) {
-    const config = qrConfig[placeholder];
-    if (!config?.campaignId) continue;
-    const mappedFields = fieldsFromQrConfig(config, row, values);
-    const result = await createQrForBody(userId, {
-      campaignId: config.campaignId,
-      contentType: config.contentType,
-      fields: mappedFields,
-      url: config.urlTemplate ? replaceMergeFields(config.urlTemplate, objectToStrings({ ...row, ...values })) : row.url,
-      text: config.textTemplate ? replaceMergeFields(config.textTemplate, objectToStrings({ ...row, ...values })) : row.text,
-      recipientEmail: row.email,
-      recipientName: row.name || values.name || values.NAME,
-      mergeData: { ...row, ...values }
-    });
-    if (!result.qrCode) continue;
-    const absoluteUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}${result.qrCode.imageUrl}`;
-    rendered = rendered.replaceAll(`{{${placeholder}}}`, `<img src="${absoluteUrl}" width="${config.width || 200}" height="${config.height || 200}" alt="QR Code" />`);
-  }
-  return rendered;
-}
-
-function fieldsFromQrConfig(config: any, row: Record<string, string>, values: Record<string, string>) {
-  const source = { ...row, ...values };
-  const output: Record<string, string> = {};
-  for (const [field, mapping] of Object.entries(config.fields || {}) as Array<[string, string]>) {
-    output[field.toUpperCase()] = source[mapping] || "";
-  }
-  for (const [field, value] of Object.entries(config.staticFields || {}) as Array<[string, string]>) {
-    output[field.toUpperCase()] = value || "";
-  }
-  return output;
+function buildQrFieldConfigs(qrConfig: Record<string, any>, html: string): QrFieldConfig[] {
+  return detectQrPlaceholders(html).map((placeholder) => ({
+    placeholderName: placeholder,
+    ...(qrConfig[placeholder] || {})
+  }));
 }
