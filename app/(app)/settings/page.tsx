@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
 
@@ -21,16 +22,30 @@ export default function SettingsPage() {
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
   const [passwordErrors, setPasswordErrors] = useState<PasswordErrors>({});
   const [visible, setVisible] = useState<Record<string, boolean>>({});
+  const [loading, setLoading] = useState(true);
+  const [healthLoading, setHealthLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   useEffect(() => {
     loadSettings();
   }, []);
 
   async function loadSettings() {
-    const data = await apiFetch<any>("/api/smtp/settings");
-    setForm({ ...data.smtpConfig, password: "" });
-    setHealth(data.smtpHealthLog || []);
-    setGlobalSmtpActive(Boolean(data.globalSmtpActive));
+    setLoading(true);
+    setHealthLoading(true);
+    try {
+      const data = await apiFetch<any>("/api/smtp/settings");
+      setForm({ ...data.smtpConfig, password: "" });
+      setHealth(data.smtpHealthLog || []);
+      setGlobalSmtpActive(Boolean(data.globalSmtpActive));
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setLoading(false);
+      setHealthLoading(false);
+    }
   }
 
   function set(key: string, value: any) {
@@ -39,21 +54,27 @@ export default function SettingsPage() {
 
   async function save() {
     try {
+      setSaving(true);
       await apiFetch("/api/smtp/settings", { method: "POST", body: JSON.stringify(form) });
       toast.success("SMTP settings saved");
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   }
 
   async function test() {
     try {
+      setTesting(true);
       const data = await apiFetch<any>("/api/smtp/test", { method: "POST", body: "{}" });
       toast.success(`Connected in ${data.latencyMs}ms`);
       await loadSettings();
     } catch (error: any) {
       toast.error(error.message);
       await loadSettings().catch(() => {});
+    } finally {
+      setTesting(false);
     }
   }
 
@@ -74,6 +95,7 @@ export default function SettingsPage() {
   async function updatePassword() {
     if (!validatePasswordFields()) return;
     try {
+      setChangingPassword(true);
       await apiFetch("/api/auth/change-password", {
         method: "POST",
         body: JSON.stringify({ currentPassword: passwords.currentPassword, newPassword: passwords.newPassword })
@@ -87,13 +109,32 @@ export default function SettingsPage() {
       } else {
         toast.error("Something went wrong, try again");
       }
+    } finally {
+      setChangingPassword(false);
     }
   }
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
       <div><h1 className="text-2xl font-semibold tracking-normal">SMTP Settings</h1><p className="text-sm text-muted-foreground">Credentials are encrypted and scoped to your account.</p></div>
-      {globalSmtpActive ? (
+      {loading ? (
+        <Card>
+          <CardHeader><CardTitle>Connection</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+            </div>
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+            <div className="flex gap-3">
+              <Skeleton className="h-10 w-32 rounded-md" />
+              <Skeleton className="h-10 w-36 rounded-md" />
+            </div>
+          </CardContent>
+        </Card>
+      ) : globalSmtpActive ? (
         <Card><CardHeader><CardTitle>Connection</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">SMTP is managed by your administrator.</p></CardContent></Card>
       ) : <Card>
         <CardHeader><CardTitle>Connection</CardTitle><CardDescription>Password is never returned after saving.</CardDescription></CardHeader>
@@ -106,7 +147,10 @@ export default function SettingsPage() {
           <div className="space-y-2"><Label>From Email</Label><Input type="email" value={form.fromEmail} onChange={(e) => set("fromEmail", e.target.value)} /></div>
           <div className="space-y-2"><Label>Encryption</Label><Select value={form.encryption} onValueChange={(v) => set("encryption", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TLS">TLS</SelectItem><SelectItem value="SSL">SSL</SelectItem><SelectItem value="NONE">None</SelectItem></SelectContent></Select></div>
           <div className="flex items-center justify-between rounded-md border p-3"><Label>Reject Unauthorized</Label><Switch checked={form.rejectUnauth} onCheckedChange={(v) => set("rejectUnauth", v)} /></div>
-          <div className="flex gap-2 md:col-span-2"><Button onClick={save}>Save Settings</Button><Button variant="outline" onClick={test}>Test Connection</Button></div>
+          <div className="flex gap-2 md:col-span-2">
+            <Button onClick={save} disabled={saving}>{saving ? (<><Loader2 className="h-4 w-4 animate-spin" />Saving...</>) : "Save Settings"}</Button>
+            <Button variant="outline" onClick={test} disabled={testing}>{testing ? (<><Loader2 className="h-4 w-4 animate-spin" />Testing...</>) : "Test Connection"}</Button>
+          </div>
         </CardContent>
       </Card>}
 
@@ -122,14 +166,29 @@ export default function SettingsPage() {
             </div>
           </div>
           <PasswordField label="Confirm New Password" value={passwords.confirmPassword} visible={visible.confirmPassword} error={passwordErrors.confirmPassword} onToggle={() => setVisible((current) => ({ ...current, confirmPassword: !current.confirmPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, confirmPassword: value }))} />
-          <div className="flex justify-end"><Button onClick={updatePassword}>Update Password</Button></div>
+          <div className="flex justify-end">
+            <Button onClick={updatePassword} disabled={changingPassword}>
+              {changingPassword ? (<><Loader2 className="h-4 w-4 animate-spin" />Updating...</>) : "Update Password"}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader><CardTitle>SMTP Health History</CardTitle></CardHeader>
         <CardContent>
-          {health.length === 0 ? (
+          {healthLoading ? (
+            <div className="space-y-2 max-h-[280px]">
+              {Array.from({ length: 5 }).map((_, index) => (
+                <div key={index} className="flex items-center gap-3 py-2">
+                  <Skeleton className="h-3 w-3 rounded-full" />
+                  <Skeleton className="h-4 w-20" />
+                  <Skeleton className="h-4 w-12" />
+                  <Skeleton className="h-4 w-32" />
+                </div>
+              ))}
+            </div>
+          ) : health.length === 0 ? (
             <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Now&quot; to check your connection.</p>
           ) : (
             <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
-import { AlertTriangle, Check, FileSpreadsheet, Layers, Play, QrCode, Square, Upload } from "lucide-react";
+import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
 import { replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
@@ -25,26 +26,68 @@ type TemplateListItem = {
   isFavourite?: boolean;
 };
 
+type CertificateTemplate = {
+  id: string;
+  name: string;
+  pdfFileName: string;
+  pdfSizeBytes: number;
+  pageCount: number;
+  previewImage?: string | null;
+  fields: Array<{ placeholder: string; label: string; defaultValue?: string }>;
+};
+
 export default function BulkPage() {
   const [step, setStep] = useState(1);
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [certificateTemplates, setCertificateTemplates] = useState<CertificateTemplate[]>([]);
   const [qrCampaigns, setQrCampaigns] = useState<any[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [fullTemplate, setFullTemplate] = useState<any | null>(null);
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
   const [qrConfig, setQrConfig] = useState<Record<string, any>>({});
+  const [attachCertificate, setAttachCertificate] = useState(false);
+  const [certificateTemplateId, setCertificateTemplateId] = useState("");
+  const [certificateFieldMappings, setCertificateFieldMappings] = useState<Record<string, string>>({});
+  const [certificateFallbacks, setCertificateFallbacks] = useState<Record<string, string>>({});
+  const [certPreviewOpen, setCertPreviewOpen] = useState(false);
+  const [certPreviewPdf, setCertPreviewPdf] = useState("");
+  const [certPreviewRow, setCertPreviewRow] = useState(0);
   const [delayMs, setDelayMs] = useState(500);
   const [logs, setLogs] = useState<any[]>([]);
+  const [parsingCsv, setParsingCsv] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [qrWarningOpen, setQrWarningOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
-    apiFetch<{ templates: TemplateListItem[] }>("/api/templates").then((data) => setTemplates(data.templates)).catch((error) => toast.error(error.message));
-    apiFetch<{ campaigns: any[] }>("/api/qr/campaigns?isActive=true").then((data) => setQrCampaigns(data.campaigns)).catch(() => {});
+    let ignore = false;
+    const load = async () => {
+      setTemplatesLoading(true);
+      try {
+        const [templateData, qrData, certData] = await Promise.all([
+          apiFetch<{ templates: TemplateListItem[] }>("/api/templates"),
+          apiFetch<{ campaigns: any[] }>("/api/qr/campaigns?isActive=true"),
+          apiFetch<{ templates: CertificateTemplate[] }>("/api/certificates")
+        ]);
+        if (ignore) return;
+        setTemplates(templateData.templates);
+        setQrCampaigns(qrData.campaigns);
+        setCertificateTemplates(certData.templates);
+      } catch (error: any) {
+        if (!ignore) toast.error(error.message);
+      } finally {
+        if (!ignore) setTemplatesLoading(false);
+      }
+    };
+    load();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -60,18 +103,23 @@ export default function BulkPage() {
   }, [templateId, columns]);
 
   async function inspect(nextFile: File | null) {
+    setParsingCsv(true);
     setFile(nextFile);
-    if (!nextFile) return;
-    const parsed = Papa.parse<Record<string, string>>(await nextFile.text(), { header: true, skipEmptyLines: true });
-    const fields = parsed.meta.fields || [];
-    if (!fields.includes("email")) {
-      setRows([]);
+    try {
+      if (!nextFile) return;
+      const parsed = Papa.parse<Record<string, string>>(await nextFile.text(), { header: true, skipEmptyLines: true });
+      const fields = parsed.meta.fields || [];
+      if (!fields.includes("email")) {
+        setRows([]);
+        setColumns(fields);
+        return toast.error('CSV must include an "email" column');
+      }
       setColumns(fields);
-      return toast.error('CSV must include an "email" column');
+      setRows(parsed.data.filter((row) => row.email).slice(0, 100));
+      setStep(2);
+    } finally {
+      setParsingCsv(false);
     }
-    setColumns(fields);
-    setRows(parsed.data.filter((row) => row.email).slice(0, 100));
-    setStep(2);
   }
 
   const mappedSample = useMemo(() => {
@@ -97,8 +145,33 @@ export default function BulkPage() {
   const hasQrPlaceholders = qrFields.length > 0;
   const hasMissingQrConfig = hasQrPlaceholders && qrFieldConfigs.length === 0;
   const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean);
+  const validRecipients = rows.length;
   const favouriteTemplates = templates.filter((template) => template.isFavourite);
   const otherTemplates = templates.filter((template) => !template.isFavourite);
+  const selectedCertificate = certificateTemplates.find((template) => template.id === certificateTemplateId);
+  const certificateConfig = attachCertificate && certificateTemplateId ? {
+    templateId: certificateTemplateId,
+    fieldMappings: certificateFieldMappings,
+    fallbackValues: certificateFallbacks
+  } : null;
+
+  useEffect(() => {
+    if (!selectedCertificate) return;
+    const mappings = Object.fromEntries(selectedCertificate.fields.map((field) => {
+      const match = columns.find((column) => column.toLowerCase() === field.placeholder.toLowerCase() || column.toLowerCase() === field.label.toLowerCase());
+      return [field.placeholder, certificateFieldMappings[field.placeholder] || match || ""];
+    }));
+    setCertificateFieldMappings(mappings);
+    setCertificateFallbacks(Object.fromEntries(selectedCertificate.fields.map((field) => [field.placeholder, certificateFallbacks[field.placeholder] || field.defaultValue || ""])));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [certificateTemplateId, columns]);
+
+  useEffect(() => {
+    if (step !== 4 || !fullTemplate) return;
+    setPreviewLoading(true);
+    const timer = setTimeout(() => setPreviewLoading(false), 200);
+    return () => clearTimeout(timer);
+  }, [previewHtml, step, fullTemplate]);
 
   async function sendBulk(sendAnyway = false) {
     if (!canSend || !file || !fullTemplate) return toast.error("Complete all steps before sending");
@@ -117,6 +190,7 @@ export default function BulkPage() {
     form.set("columnMap", JSON.stringify(columnMap));
     form.set("qrConfig", JSON.stringify(qrConfig));
     form.set("qrFieldConfigs", JSON.stringify(qrFieldConfigs));
+    if (certificateConfig) form.set("certificateConfig", JSON.stringify(certificateConfig));
     form.set("delayMs", String(delayMs));
     try {
       const res = await fetch("/api/send-bulk", { method: "POST", body: form, signal: controller.signal });
@@ -151,6 +225,21 @@ export default function BulkPage() {
     setSending(false);
   }
 
+  async function previewCertificate() {
+    if (!selectedCertificate) return;
+    const row = rows[certPreviewRow] || {};
+    const mergeData = Object.fromEntries(selectedCertificate.fields.map((field) => {
+      const column = certificateFieldMappings[field.placeholder];
+      return [field.placeholder, row[column] || certificateFallbacks[field.placeholder] || field.defaultValue || ""];
+    }));
+    const data = await apiFetch<{ pdfBase64: string }>(`/api/certificates/${selectedCertificate.id}/preview`, {
+      method: "POST",
+      body: JSON.stringify({ mergeData })
+    });
+    setCertPreviewPdf(data.pdfBase64);
+    setCertPreviewOpen(true);
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -174,6 +263,12 @@ export default function BulkPage() {
           <CardContent className="space-y-4">
             <Label htmlFor="csv" className="flex min-h-44 cursor-pointer flex-col items-center justify-center gap-3 rounded-md border border-dashed bg-accent/20 p-6 text-center"><Upload className="h-6 w-6" />{file?.name || "Choose CSV file"}</Label>
             <Input id="csv" className="hidden" type="file" accept=".csv" onChange={(event) => inspect(event.target.files?.[0] || null)} />
+            {parsingCsv && (
+              <div className="flex flex-col items-center gap-3 py-6">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Parsing CSV...</p>
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
@@ -182,19 +277,42 @@ export default function BulkPage() {
         <Card>
           <CardHeader><CardTitle className="flex items-center gap-2"><Layers className="h-5 w-5" />Select Template</CardTitle></CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {[...favouriteTemplates, ...otherTemplates].map((template) => (
-              <button key={template._id} type="button" onClick={() => { setTemplateId(template._id); setStep(3); }} className="overflow-hidden rounded-lg border bg-card text-left transition-colors hover:bg-accent">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={template.previewImage || TEMPLATE_THUMBNAIL_PLACEHOLDER} alt="" className="aspect-[16/10] w-full object-cover" />
-                <div className="space-y-2 p-4">
-                  <div className="font-medium">{template.isFavourite ? "★ " : ""}{template.name}</div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="secondary">{template.mergeFields?.length || 0} fields</Badge>
-                    {template.mergeFields?.some((field) => /^qr_[a-z_]+$/.test(field)) && <Badge><QrCode className="h-3 w-3" />QR</Badge>}
+            {templatesLoading ? (
+              <div className="grid w-full gap-3 md:grid-cols-2 xl:grid-cols-3 md:col-span-2 xl:col-span-3">
+                {Array.from({ length: 6 }).map((_, index) => (
+                  <div key={index} className="space-y-2">
+                    <Skeleton className="h-28 w-full rounded-lg" />
+                    <Skeleton className="h-4 w-3/4" />
                   </div>
-                </div>
-              </button>
-            ))}
+                ))}
+              </div>
+            ) : (
+              [...favouriteTemplates, ...otherTemplates].map((template) => (
+                <button key={template._id} type="button" onClick={() => setTemplateId(template._id)} className={`overflow-hidden rounded-lg border bg-card text-left transition-colors hover:bg-accent ${templateId === template._id ? "border-ring" : ""}`}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={template.previewImage || TEMPLATE_THUMBNAIL_PLACEHOLDER} alt="" className="aspect-[16/10] w-full object-cover" />
+                  <div className="space-y-2 p-4">
+                    <div className="font-medium">{template.isFavourite ? "★ " : ""}{template.name}</div>
+                    <div className="flex flex-wrap gap-2">
+                      <Badge variant="secondary">{template.mergeFields?.length || 0} fields</Badge>
+                      {template.mergeFields?.some((field) => /^qr_[a-z_]+$/.test(field)) && <Badge><QrCode className="h-3 w-3" />QR</Badge>}
+                    </div>
+                  </div>
+                </button>
+              ))
+            )}
+            {templateId && <div className="space-y-4 rounded-lg border p-4 md:col-span-2 xl:col-span-3">
+              <Label className="flex items-center justify-between gap-3"><span className="flex items-center gap-2"><Award className="h-4 w-4" />Attach Certificate PDF</span><input type="checkbox" checked={attachCertificate} onChange={(event) => setAttachCertificate(event.target.checked)} /></Label>
+              {attachCertificate && <div className="grid gap-3 md:grid-cols-[1fr_220px]">
+                <Label>Select certificate template<select className="mt-2 w-full rounded-md border bg-background p-2" value={certificateTemplateId} onChange={(event) => setCertificateTemplateId(event.target.value)}><option value="">Choose certificate</option>{certificateTemplates.map((template) => <option key={template.id} value={template.id}>{template.name}</option>)}</select></Label>
+                {selectedCertificate && <div className="grid place-items-center rounded-md border bg-muted p-3">{selectedCertificate.previewImage ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={`data:image/png;base64,${selectedCertificate.previewImage}`} alt="" className="max-h-32" />
+                ) : <Award className="h-10 w-10 text-muted-foreground" />}</div>}
+                {selectedCertificate && <p className="text-sm text-muted-foreground md:col-span-2">Each recipient will receive a personalized PDF attachment. {selectedCertificate.fields.length} fields need CSV column mapping in Step 3.</p>}
+              </div>}
+              <Button onClick={() => setStep(3)}>Continue to Mapping</Button>
+            </div>}
           </CardContent>
         </Card>
       )}
@@ -233,6 +351,18 @@ export default function BulkPage() {
                 );
               })}
             </div>}
+            {selectedCertificate && <div className="space-y-4 rounded-md border p-4">
+              <h3 className="flex items-center gap-2 font-medium"><Award className="h-4 w-4" />Certificate Fields</h3>
+              <p className="text-sm text-muted-foreground">Map CSV columns to certificate placeholder text.</p>
+              {selectedCertificate.fields.map((field) => (
+                <div key={field.placeholder} className="grid gap-3 rounded-md border bg-card p-3 md:grid-cols-[1fr_1fr]">
+                  <div><div className="font-medium">Placeholder: {field.placeholder}</div><div className="text-sm text-muted-foreground">Label: {field.label}</div></div>
+                  <Label>CSV Column<select className="mt-2 w-full rounded-md border bg-background p-2" value={certificateFieldMappings[field.placeholder] || ""} onChange={(event) => setCertificateFieldMappings((current) => ({ ...current, [field.placeholder]: event.target.value }))}><option value="">Choose CSV column</option>{columns.map((column) => <option key={column} value={column}>{column}</option>)}</select></Label>
+                  <Label className="md:col-span-2">Fallback<Input value={certificateFallbacks[field.placeholder] || ""} onChange={(event) => setCertificateFallbacks((current) => ({ ...current, [field.placeholder]: event.target.value }))} /></Label>
+                </div>
+              ))}
+              <div className="flex flex-col gap-3 md:flex-row md:items-end"><Label>Preview recipient<select className="mt-2 w-full rounded-md border bg-background p-2" value={certPreviewRow} onChange={(event) => setCertPreviewRow(Number(event.target.value))}>{rows.map((row, index) => <option key={index} value={index}>{row.email || `Row ${index + 1}`}</option>)}</select></Label><Button variant="outline" onClick={previewCertificate}>Preview Certificate</Button></div>
+            </div>}
             <Button onClick={() => setStep(4)}>Continue to Preview</Button>
           </CardContent>
         </Card>
@@ -242,15 +372,30 @@ export default function BulkPage() {
         <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
           <Card>
             <CardHeader><CardTitle>Preview</CardTitle><CardDescription>{replaceTemplateValues(fullTemplate.subjectLine || fullTemplate.subject || "", mappedSample)}</CardDescription></CardHeader>
-            <CardContent><iframe title="Bulk preview" sandbox="" srcDoc={previewHtml} className="h-[560px] w-full rounded-md border bg-background" /></CardContent>
+            <CardContent>
+              {previewLoading ? (
+                <div className="flex h-[560px] items-center justify-center rounded-md border bg-muted">
+                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                </div>
+              ) : (
+                <iframe title="Bulk preview" sandbox="" srcDoc={previewHtml} className="h-[560px] w-full rounded-md border bg-background" />
+              )}
+            </CardContent>
           </Card>
           <div className="space-y-5">
             <Card>
               <CardHeader><CardTitle>Send Controls</CardTitle></CardHeader>
               <CardContent className="space-y-3">
+                {selectedCertificate && <div className="rounded-md border p-3 text-sm"><div className="font-medium">Certificate: {selectedCertificate.name}</div><div className="text-muted-foreground">1 PDF will be attached per email</div>{selectedCertificate.fields.map((field) => <div key={field.placeholder} className="text-xs text-muted-foreground">{field.placeholder} {"->"} {certificateFieldMappings[field.placeholder] || "fallback"}</div>)}</div>}
                 <div className="space-y-2"><Label>Delay between sends (ms)</Label><Input type="number" value={delayMs} onChange={(event) => setDelayMs(Number(event.target.value))} /></div>
                 <div className="flex gap-2">
-                  <Button disabled={!canSend || sending} onClick={() => sendBulk()}><Play className="h-4 w-4" />Send All</Button>
+                  <Button disabled={!canSend || sending} onClick={() => sendBulk()}>
+                    {sending ? (
+                      <><Loader2 className="h-4 w-4 animate-spin" />Sending...</>
+                    ) : (
+                      <><Play className="h-4 w-4" />Send to {validRecipients} recipients</>
+                    )}
+                  </Button>
                   {sending && <Button variant="destructive" onClick={stopSending}><Square className="h-4 w-4" />Stop Sending</Button>}
                 </div>
               </CardContent>
@@ -267,7 +412,16 @@ export default function BulkPage() {
 
       <Card>
         <CardHeader><CardTitle>CSV Preview</CardTitle></CardHeader>
-        <CardContent><Table><TableHeader><TableRow>{columns.map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.slice(0, 8).map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{row[column]}</TableCell>)}</TableRow>)}</TableBody></Table></CardContent>
+        <CardContent>
+          {parsingCsv ? (
+            <div className="flex flex-col items-center gap-3 py-10">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm text-muted-foreground">Parsing CSV...</p>
+            </div>
+          ) : (
+            <Table><TableHeader><TableRow>{columns.map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.slice(0, 8).map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{row[column]}</TableCell>)}</TableRow>)}</TableBody></Table>
+          )}
+        </CardContent>
       </Card>
 
       <Dialog open={qrWarningOpen} onOpenChange={setQrWarningOpen}>
@@ -282,6 +436,12 @@ export default function BulkPage() {
             <Button variant="outline" onClick={() => { setQrWarningOpen(false); setStep(3); }}>Go Back</Button>
             <Button variant="destructive" onClick={() => sendBulk(true)}>Send Anyway</Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={certPreviewOpen} onOpenChange={setCertPreviewOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader><DialogTitle>Certificate Preview</DialogTitle></DialogHeader>
+          {certPreviewPdf && <iframe title="Certificate preview" className="h-[720px] w-full rounded-md border" src={`data:application/pdf;base64,${certPreviewPdf}`} />}
         </DialogContent>
       </Dialog>
     </div>
