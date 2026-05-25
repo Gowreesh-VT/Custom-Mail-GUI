@@ -46,6 +46,7 @@ model User {
   announcements      Announcement[]
   dismissedAnnouncements AnnouncementDismissal[]
   emailEvents        EmailEvent[]
+  qrCampaigns        QrCampaign[]
 }
 
 // ---------------------------------------------------------------------------
@@ -291,4 +292,116 @@ model SystemConfig {
   smtpRejectUnauth   Boolean  @default(true)
   updatedAt          DateTime @updatedAt
   updatedById        String?
+}
+
+// ---------------------------------------------------------------------------
+// QR CAMPAIGN
+// ---------------------------------------------------------------------------
+
+model QrCampaign {
+  id             String               @id @default(cuid())
+  userId         String
+  user           User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  description    String?
+  type           String               // "checkin" | "url" | "text"
+  scanMode       String               @default("once") // "once" | "unlimited"
+  expiresAt      DateTime?
+  isActive       Boolean              @default(true)
+
+  brandColor     String               @default("#000000")
+  bgColor        String               @default("#ffffff")
+  logoUrl        String?
+  cornerRadius   Int                  @default(0)
+  borderSize     Int                  @default(0)
+  borderColor    String               @default("#000000")
+  displayFields  String               @default("[]")
+
+  qrCodes        QrCode[]
+  scanLogs       QrScanLog[]
+  operators      QrCampaignOperator[]
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  @@index([userId])
+  @@index([isActive])
+  @@index([type])
+  @@index([expiresAt])
+}
+
+model QrCode {
+  id             String      @id @default(cuid())
+  campaignId     String
+  campaign       QrCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  userId         String
+  contentType    String      // "url" | "text" | "checkin"
+  encodedData    String
+  imageUrl       String
+  recipientEmail String?
+  recipientName  String?
+  mergeData      String?
+  status         String      @default("active") // "active" | "used" | "expired" | "invalidated"
+  scanCount      Int         @default(0)
+  lastScannedAt  DateTime?
+  emailId        String?
+  scanLogs       QrScanLog[]
+  createdAt      DateTime    @default(now())
+
+  @@index([campaignId])
+  @@index([userId])
+  @@index([status])
+  @@index([recipientEmail])
+  @@index([recipientName])
+  @@index([createdAt])
+}
+
+model QrScanLog {
+  id             String      @id @default(cuid())
+  qrCodeId       String
+  qrCode         QrCode      @relation(fields: [qrCodeId], references: [id], onDelete: Cascade)
+  campaignId     String
+  campaign       QrCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  operatorId     String?
+  operator       QrOperator? @relation(fields: [operatorId], references: [id], onDelete: SetNull)
+  result         String      // "valid" | "invalid" | "used" | "expired"
+  scannedAt      DateTime    @default(now())
+  ipAddress      String?
+  userAgent      String?
+
+  @@index([qrCodeId])
+  @@index([campaignId])
+  @@index([operatorId])
+  @@index([result])
+  @@index([scannedAt])
+  @@index([campaignId, scannedAt])
+}
+
+model QrOperator {
+  id             String               @id @default(cuid())
+  name           String
+  email          String               @unique
+  pinHash        String
+  isActive       Boolean              @default(true)
+  createdBy      String
+  lastScanAt     DateTime?
+  totalScans     Int                  @default(0)
+  campaigns      QrCampaignOperator[]
+  scanLogs       QrScanLog[]
+  createdAt      DateTime             @default(now())
+
+  @@index([email])
+  @@index([isActive])
+  @@index([createdBy])
+}
+
+model QrCampaignOperator {
+  id             String      @id @default(cuid())
+  campaignId     String
+  campaign       QrCampaign  @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  operatorId     String
+  operator       QrOperator  @relation(fields: [operatorId], references: [id], onDelete: Cascade)
+  assignedAt     DateTime    @default(now())
+
+  @@unique([campaignId, operatorId])
+  @@index([operatorId])
 }

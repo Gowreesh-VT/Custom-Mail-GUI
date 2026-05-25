@@ -2,7 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const publicRoutes = ["/login", "/signup"];
 const publicApi = ["/api/auth/login", "/api/auth/signup", "/api/auth/refresh", "/api/auth/logout"];
-const publicPrefixes = ["/api/track/open/", "/api/track/click/", "/api/cron/"];
+const publicPrefixes = ["/api/track/open/", "/api/track/click/", "/api/cron/", "/api/qr/img/", "/api/qr/validate", "/api/qr/operator/auth"];
+const publicStandaloneRoutes = ["/scan"];
 
 async function verifyAccessToken(token: string) {
   const [header, payload, signature] = token.split(".");
@@ -37,6 +38,7 @@ export async function proxy(req: NextRequest) {
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
     publicPrefixes.some((prefix) => pathname.startsWith(prefix)) ||
+    publicStandaloneRoutes.includes(pathname) ||
     publicRoutes.includes(pathname) ||
     publicApi.includes(pathname)
   ) {
