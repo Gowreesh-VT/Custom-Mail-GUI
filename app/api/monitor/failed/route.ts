@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Email } from "@/lib/models";
+import { prisma } from "@/lib/prisma";
+import { emailRecord } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
@@ -11,8 +12,16 @@ export async function GET(req: NextRequest) {
   const q = url.searchParams.get("q") || "";
   const since = new Date();
   since.setDate(since.getDate() - range);
-  const filter: any = { userId: user._id, status: "failed", acknowledged: false, sentAt: { $gte: since } };
-  if (q) filter.$or = [{ subject: new RegExp(q, "i") }, { to: new RegExp(q, "i") }, { errorMsg: new RegExp(q, "i") }];
-  const failed = await Email.find(filter).sort({ sentAt: -1 }).limit(100).lean();
-  return Response.json({ success: true, failed });
+  const failed = await prisma.email.findMany({
+    where: {
+      userId: String(user._id),
+      status: "failed",
+      acknowledged: false,
+      sentAt: { gte: since },
+      ...(q ? { OR: [{ subject: { contains: q, mode: "insensitive" as const } }, { toAddresses: { contains: q, mode: "insensitive" as const } }, { errorMsg: { contains: q, mode: "insensitive" as const } }] } : {})
+    },
+    orderBy: { sentAt: "desc" },
+    take: 100
+  });
+  return Response.json({ success: true, failed: failed.map(emailRecord) });
 }

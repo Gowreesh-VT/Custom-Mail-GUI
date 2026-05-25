@@ -1,10 +1,10 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { Email } from "@/lib/models";
+import { prisma } from "@/lib/prisma";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireUser(req);
   const { id } = await params;
-  await Email.updateOne({ _id: id, userId: user._id }, { $set: { acknowledged: true } });
+  await prisma.email.updateMany({ where: { id, userId: String(user._id) }, data: { acknowledged: true } });
   return Response.json({ success: true });
 }
