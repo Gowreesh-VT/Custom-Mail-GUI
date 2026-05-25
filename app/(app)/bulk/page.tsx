@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
-import { replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
+import { replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
 
 type TemplateListItem = {
   _id: string;
@@ -76,7 +76,7 @@ export default function BulkPage() {
     const sampleRow = rows[0] || {};
     return Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, sampleRow[column] || ""]));
   }, [columnMap, rows]);
-  const previewHtml = fullTemplate ? replaceTemplateValues(fullTemplate.bodyHtml, mappedSample) : "";
+  const previewHtml = fullTemplate ? replaceQrPlaceholdersForPreview(replaceTemplateValues(fullTemplate.bodyHtml, mappedSample)) : "";
   const qrFields = (fullTemplate?.mergeFields || []).filter((field: string) => /^qr_[a-z_]+$/.test(field));
   const textFields = (fullTemplate?.mergeFields || []).filter((field: string) => !/^qr_[a-z_]+$/.test(field));
   const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean) && qrFields.every((field: string) => qrConfig[field]?.campaignId);

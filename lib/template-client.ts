@@ -63,9 +63,37 @@ export function replaceTemplateValues(input: string, values: Record<string, stri
 }
 
 export function replaceQrPlaceholdersForPreview(html: string) {
-  return html.replace(/<img\b([^>]*?)src=(["'])\{\{(qr_[a-z_]+)\}\}\2([^>]*)>/gi, (_tag, before, _quote, name, after) => {
+  const placeholderFor = (width = "200", height = width) => `<div style="
+      width: ${width}px;
+      height: ${height}px;
+      background: #f0f0f0;
+      border: 2px dashed #999;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      font-family: monospace;
+      font-size: 11px;
+      color: #666;
+      text-align: center;
+      gap: 8px;
+    ">
+      <svg width="40" height="40" viewBox="0 0 24 24"
+        fill="none" stroke="#999" stroke-width="1.5">
+        <rect x="3" y="3" width="7" height="7"/>
+        <rect x="14" y="3" width="7" height="7"/>
+        <rect x="3" y="14" width="7" height="7"/>
+        <rect x="14" y="14" width="3" height="3"/>
+      </svg>
+      QR Code Preview<br/>
+      <span style="color:#aaa;font-size:10px;">
+        Generated on send
+      </span>
+    </div>`;
+
+  return html.replace(/<img\b([^>]*?)src=(["'])\{\{(qr_[a-z_]+)\}\}\2([^>]*)>/gi, (_tag, before, _quote, _name, after) => {
     const width = /width=(["']?)(\d+)/i.exec(`${before} ${after}`)?.[2] || "200";
     const height = /height=(["']?)(\d+)/i.exec(`${before} ${after}`)?.[2] || width;
-    return `<div style="width:${width}px;height:${height}px;background:#f0f0f0;border:2px dashed #ccc;display:flex;align-items:center;justify-content:center;font-size:12px;color:#666;text-align:center;">QR: {{${name}}}<br/>will appear here</div>`;
-  });
+    return placeholderFor(width, height);
+  }).replace(/\{\{\s*qr_[a-z_]+\s*\}\}/g, placeholderFor());
 }

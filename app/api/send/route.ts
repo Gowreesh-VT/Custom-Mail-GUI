@@ -8,7 +8,7 @@ import { logAudit } from "@/lib/audit";
 import { prisma } from "@/lib/prisma";
 import { toJson } from "@/lib/json-fields";
 import { createQrForBody, objectToStrings } from "@/lib/qr-api";
-import { detectQrPlaceholders, replaceMergeFields } from "@/lib/qr";
+import { detectQrPlaceholders, getQrImageUrl, replaceMergeFields } from "@/lib/qr";
 
 const schema = z.object({
   to: z.union([z.string(), z.array(z.string())]),
@@ -133,7 +133,7 @@ async function renderSingleQrHtml(
     if (result.error || !result.qrCode) {
       throw new Error("Unable to generate QR code for this email.");
     }
-    const src = `${process.env.NEXT_PUBLIC_APP_URL || ""}${result.qrCode.imageUrl}`;
+    const src = result.qrCode.imageUrl || getQrImageUrl(result.qrCode.id);
     const width = Number(config.width) || 200;
     const height = Number(config.height) || width;
     const alt = String(config.alt || "QR Code");

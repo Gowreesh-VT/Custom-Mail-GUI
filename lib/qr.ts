@@ -36,6 +36,22 @@ export type DecodedQrData =
 const QR_PREFIX = "QR_V1";
 export const PENDING_QR_ID = "__pending_qr_id__";
 
+if (!process.env.NEXT_PUBLIC_APP_URL) {
+  throw new Error(
+    "NEXT_PUBLIC_APP_URL is not set. " +
+      "QR image URLs will be broken in emails. " +
+      "Add NEXT_PUBLIC_APP_URL=https://yourdomain.com to your .env file."
+  );
+}
+
+export function getPublicAppUrl() {
+  return process.env.NEXT_PUBLIC_APP_URL!.replace(/\/$/, "");
+}
+
+export function getQrImageUrl(id: string) {
+  return `${getPublicAppUrl()}/api/qr/img/${id}`;
+}
+
 function sanitizePart(value: unknown) {
   return String(value ?? "").replace(/[|\r\n]+/g, " ").trim();
 }
@@ -190,7 +206,7 @@ export async function createQrRecord(
     where: { id: record.id },
     data: {
       encodedData: record.encodedData.replace(PENDING_QR_ID, record.id),
-      imageUrl: `/api/qr/img/${record.id}`
+      imageUrl: getQrImageUrl(record.id)
     }
   });
 }
@@ -226,7 +242,7 @@ export async function replaceQrPlaceholders(
         recipientName: recipient.data.name || recipient.data.NAME || null,
         mergeData: recipient.data
       });
-      const imageUrl = `${process.env.NEXT_PUBLIC_APP_URL || ""}${qrCode.imageUrl || `/api/qr/img/${qrCode.id}`}`;
+      const imageUrl = qrCode.imageUrl || getQrImageUrl(qrCode.id);
       const width = Number(config.width) || 200;
       const height = Number(config.height) || width;
       const alt = String(config.alt || "QR Code");
@@ -247,11 +263,11 @@ export async function replaceQrPlaceholders(
 function replaceQrPlaceholderHtml(html: string, placeholderName: string, replacement: string) {
   if (!placeholderName) return html;
   const escaped = placeholderName.replace(/[-/\\^$*+?.()|[\]{}]/g, "\\$&");
-  const imgPattern = new RegExp(`<img[^>]*src=["']\\{\\{\s*${escaped}\s*\\}\\}["'][^>]*>`, "gi");
+  const imgPattern = new RegExp(`<img[^>]*src=["']\\{\\{\\s*${escaped}\\s*\\}\\}["'][^>]*>`, "gi");
   if (imgPattern.test(html)) {
     return html.replace(imgPattern, replacement);
   }
-  const tokenPattern = new RegExp(`\\{\\{\s*${escaped}\s*\\}\\}`, "g");
+  const tokenPattern = new RegExp(`\\{\\{\\s*${escaped}\\s*\\}\\}`, "g");
   return html.replace(tokenPattern, replacement);
 }
 

@@ -128,7 +128,7 @@ export default function ComposePage() {
             recipientEmail: config.email || to[0]
           })
         });
-        const src = `${process.env.NEXT_PUBLIC_APP_URL || ""}${data.qrCode.imageUrl}`;
+        const src = data.qrCode.imageUrl;
         const width = Number(config.width) || 200;
         const height = Number(config.height) || width;
         const alt = config.alt || "QR Code";

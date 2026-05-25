@@ -103,7 +103,7 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
                   })
                 });
                 const margin = qr.align === "center" ? "0 auto" : qr.align === "right" ? "0 0 0 auto" : "0 auto 0 0";
-                const src = `${process.env.NEXT_PUBLIC_APP_URL || ""}${data.qrCode.imageUrl}`;
+                const src = data.qrCode.imageUrl;
                 editor?.chain().focus().setImage({ src, alt: qr.alt, width: qr.size, height: qr.size, style: `display:block;margin:${margin};width:${qr.size}px;height:${qr.size}px;` } as any).run();
                 setDialog(null);
               }}
