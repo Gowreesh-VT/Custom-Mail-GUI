@@ -21,13 +21,14 @@ export default function MonitorPage() {
   const [days, setDays] = useState("30");
   const [events, setEvents] = useState<any[]>([]);
   const [paused, setPaused] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const bottom = useRef<HTMLDivElement>(null);
 
   const load = useCallback(async () => {
     const [s, c, f] = await Promise.all([apiFetch<any>("/api/monitor/stats"), apiFetch<any>(`/api/monitor/chart?days=${days}`), apiFetch<any>("/api/monitor/failed?days=7")]);
     setStats(s.stats); setChart(c.data); setFailed(f.failed);
   }, [days]);
-  useEffect(() => { load(); const timer = setInterval(load, 60000); return () => clearInterval(timer); }, [load]);
+  useEffect(() => { setMounted(true); load(); const timer = setInterval(load, 60000); return () => clearInterval(timer); }, [load]);
   useEffect(() => {
     const source = new EventSource("/api/monitor/stream");
     source.onmessage = (event) => setEvents((current) => [JSON.parse(event.data), ...current].slice(0, 100));
@@ -57,7 +58,7 @@ export default function MonitorPage() {
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between"><CardTitle>Send Volume</CardTitle><Tabs value={days} onValueChange={setDays}><TabsList><TabsTrigger value="7">7 days</TabsTrigger><TabsTrigger value="30">30 days</TabsTrigger><TabsTrigger value="90">90 days</TabsTrigger></TabsList></Tabs></CardHeader>
-          <CardContent className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><ChartTooltip /><Legend /><Bar dataKey="sent" fill="hsl(var(--sent))" /><Bar dataKey="failed" fill="hsl(var(--failed))" /></BarChart></ResponsiveContainer></CardContent>
+          <CardContent className="h-80">{mounted ? <ResponsiveContainer width="100%" height="100%"><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><ChartTooltip /><Legend /><Bar dataKey="sent" fill="hsl(var(--sent))" /><Bar dataKey="failed" fill="hsl(var(--failed))" /></BarChart></ResponsiveContainer> : null}</CardContent>
         </Card>
         <Card className={lastFailed ? "border-failed/40" : ""}>
           <CardHeader><CardTitle>SMTP Health</CardTitle></CardHeader>

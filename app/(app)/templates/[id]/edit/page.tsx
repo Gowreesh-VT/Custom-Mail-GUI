@@ -10,7 +10,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import beautify from "js-beautify";
-import { ArrowLeft, CheckCircle2, Code2, Eye, RefreshCw, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Code2, Eye, QrCode, RefreshCw, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 import { detectTemplateFields, formatInvalidImagesMessage, validateExternalImageUrls } from "@/lib/template-html";
-import { generateTemplateThumbnail, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
+import { generateTemplateThumbnail, replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
 
 const htmlEditorHighlightStyle = HighlightStyle.define([
   { tag: tags.angleBracket, color: "#7dd3fc" },
@@ -104,6 +104,8 @@ export default function TemplateEditPage() {
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
   const [warning, setWarning] = useState("");
   const [fullPreview, setFullPreview] = useState(false);
+  const [qrDialog, setQrDialog] = useState(false);
+  const [qrPlaceholder, setQrPlaceholder] = useState({ name: "qr_code", width: 200, height: 200, alt: "QR Code" });
 
   useEffect(() => {
     apiFetch<{ template: any }>(`/api/templates/${params.id}`)
@@ -157,6 +159,13 @@ export default function TemplateEditPage() {
 
   function formatHtml() {
     setBodyHtml(beautify.html(bodyHtml, { indent_size: 2, wrap_line_length: 120 }));
+  }
+
+  function insertQrPlaceholder() {
+    if (!/^qr_[a-z_]+$/.test(qrPlaceholder.name)) return toast.error("Use lowercase letters and underscores, starting with qr_");
+    setBodyHtml((current) => `${current}\n<img src="{{${qrPlaceholder.name}}}" width="${qrPlaceholder.width}" height="${qrPlaceholder.height}" alt="${qrPlaceholder.alt}" />`);
+    setMergeFields((current) => Array.from(new Set([...current, qrPlaceholder.name])));
+    setQrDialog(false);
   }
 
   function discard() {
@@ -214,6 +223,7 @@ export default function TemplateEditPage() {
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" onClick={validateImages}><CheckCircle2 className="h-4 w-4" />Validate Images</Button>
           <Button variant="outline" onClick={refreshFields}><RefreshCw className="h-4 w-4" />Detect Merge Fields</Button>
+          <Button variant="outline" onClick={() => setQrDialog(true)}><QrCode className="h-4 w-4" />Insert QR Placeholder</Button>
           <Button variant="outline" onClick={formatHtml}><Code2 className="h-4 w-4" />Format HTML</Button>
           <Button variant="outline" onClick={() => setFullPreview(true)}><Eye className="h-4 w-4" />Preview Full Screen</Button>
           <Button variant="outline" onClick={discard}>Discard Changes</Button>
@@ -243,7 +253,7 @@ export default function TemplateEditPage() {
               <div className="flex gap-2"><Button size="sm" variant={device === "desktop" ? "secondary" : "outline"} onClick={() => setDevice("desktop")}>Desktop</Button><Button size="sm" variant={device === "mobile" ? "secondary" : "outline"} onClick={() => setDevice("mobile")}>Mobile</Button></div>
             </div>
             {warning && <pre className="whitespace-pre-wrap rounded-md border border-failed/30 bg-failed/10 p-3 text-sm text-failed">{warning}</pre>}
-            <iframe title="Live preview" sandbox="" srcDoc={bodyHtml} className="mx-auto min-h-0 flex-1 rounded-md border bg-background" style={{ width: device === "desktop" ? 600 : 375 }} />
+            <iframe title="Live preview" sandbox="" srcDoc={replaceQrPlaceholdersForPreview(bodyHtml)} className="mx-auto min-h-0 flex-1 rounded-md border bg-background" style={{ width: device === "desktop" ? 600 : 375 }} />
           </CardContent>
         </Card>
       </div>
@@ -263,13 +273,26 @@ export default function TemplateEditPage() {
             <iframe
               title="Full preview"
               sandbox=""
-              srcDoc={replaceTemplateValues(bodyHtml, {})}
+              srcDoc={replaceQrPlaceholdersForPreview(replaceTemplateValues(bodyHtml, {}))}
               className="h-full rounded-none border-0 bg-background"
               style={{ width: device === "desktop" ? "100%" : 375, marginInline: device === "desktop" ? 0 : "auto", display: "block" }}
             />
           </div>
         </DialogContent>
       </Dialog>
+      <Dialog open={qrDialog} onOpenChange={setQrDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Insert QR Placeholder</DialogTitle></DialogHeader>
+          <div className="grid gap-3">
+            <Label>Placeholder name<Input value={qrPlaceholder.name} onChange={(event) => setQrPlaceholder({ ...qrPlaceholder, name: event.target.value })} /></Label>
+            <div className="grid grid-cols-2 gap-3"><Label>Width<Input type="number" value={qrPlaceholder.width} onChange={(event) => setQrPlaceholder({ ...qrPlaceholder, width: Number(event.target.value) || 200 })} /></Label><Label>Height<Input type="number" value={qrPlaceholder.height} onChange={(event) => setQrPlaceholder({ ...qrPlaceholder, height: Number(event.target.value) || 200 })} /></Label></div>
+            <Label>Alt text<Input value={qrPlaceholder.alt} onChange={(event) => setQrPlaceholder({ ...qrPlaceholder, alt: event.target.value })} /></Label>
+            <p className="text-sm text-muted-foreground">Use different names for multiple QRs: qr_ticket, qr_map, etc.</p>
+            <Button onClick={insertQrPlaceholder}>Insert Placeholder</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
+

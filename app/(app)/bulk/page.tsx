@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
-import { Check, FileSpreadsheet, Layers, Play, Square, Upload } from "lucide-react";
+import { Check, FileSpreadsheet, Layers, Play, QrCode, Square, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -30,9 +30,11 @@ export default function BulkPage() {
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
+  const [qrCampaigns, setQrCampaigns] = useState<any[]>([]);
   const [templateId, setTemplateId] = useState("");
   const [fullTemplate, setFullTemplate] = useState<any | null>(null);
   const [columnMap, setColumnMap] = useState<Record<string, string>>({});
+  const [qrConfig, setQrConfig] = useState<Record<string, any>>({});
   const [delayMs, setDelayMs] = useState(500);
   const [logs, setLogs] = useState<any[]>([]);
   const [sending, setSending] = useState(false);
@@ -40,6 +42,7 @@ export default function BulkPage() {
 
   useEffect(() => {
     apiFetch<{ templates: TemplateListItem[] }>("/api/templates").then((data) => setTemplates(data.templates)).catch((error) => toast.error(error.message));
+    apiFetch<{ campaigns: any[] }>("/api/qr/campaigns?isActive=true").then((data) => setQrCampaigns(data.campaigns)).catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -47,7 +50,7 @@ export default function BulkPage() {
     apiFetch<{ template: any }>(`/api/templates/${templateId}`).then(({ template }) => {
       setFullTemplate(template);
       const nextMap: Record<string, string> = {};
-      (template.mergeFields || []).forEach((field: string) => {
+      (template.mergeFields || []).filter((field: string) => !/^qr_[a-z_]+$/.test(field)).forEach((field: string) => {
         nextMap[field] = columns.includes(field) ? field : "";
       });
       setColumnMap(nextMap);
@@ -74,7 +77,9 @@ export default function BulkPage() {
     return Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, sampleRow[column] || ""]));
   }, [columnMap, rows]);
   const previewHtml = fullTemplate ? replaceTemplateValues(fullTemplate.bodyHtml, mappedSample) : "";
-  const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean);
+  const qrFields = (fullTemplate?.mergeFields || []).filter((field: string) => /^qr_[a-z_]+$/.test(field));
+  const textFields = (fullTemplate?.mergeFields || []).filter((field: string) => !/^qr_[a-z_]+$/.test(field));
+  const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean) && qrFields.every((field: string) => qrConfig[field]?.campaignId);
   const favouriteTemplates = templates.filter((template) => template.isFavourite);
   const otherTemplates = templates.filter((template) => !template.isFavourite);
 
@@ -88,6 +93,7 @@ export default function BulkPage() {
     form.set("csv", file);
     form.set("templateId", fullTemplate._id);
     form.set("columnMap", JSON.stringify(columnMap));
+    form.set("qrConfig", JSON.stringify(qrConfig));
     form.set("delayMs", String(delayMs));
     try {
       const res = await fetch("/api/send-bulk", { method: "POST", body: form, signal: controller.signal });
@@ -157,7 +163,13 @@ export default function BulkPage() {
               <button key={template._id} type="button" onClick={() => { setTemplateId(template._id); setStep(3); }} className="overflow-hidden rounded-lg border bg-card text-left transition-colors hover:bg-accent">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={template.previewImage || TEMPLATE_THUMBNAIL_PLACEHOLDER} alt="" className="aspect-[16/10] w-full object-cover" />
-                <div className="space-y-2 p-4"><div className="font-medium">{template.isFavourite ? "★ " : ""}{template.name}</div><Badge variant="secondary">{template.mergeFields?.length || 0} fields</Badge></div>
+                <div className="space-y-2 p-4">
+                  <div className="font-medium">{template.isFavourite ? "★ " : ""}{template.name}</div>
+                  <div className="flex flex-wrap gap-2">
+                    <Badge variant="secondary">{template.mergeFields?.length || 0} fields</Badge>
+                    {template.mergeFields?.some((field) => /^qr_[a-z_]+$/.test(field)) && <Badge><QrCode className="h-3 w-3" />QR</Badge>}
+                  </div>
+                </div>
               </button>
             ))}
           </CardContent>
@@ -168,7 +180,9 @@ export default function BulkPage() {
         <Card>
           <CardHeader><CardTitle>Map CSV Columns</CardTitle><CardDescription>Exact column matches were selected automatically. Review and adjust before sending.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
-            {(fullTemplate.mergeFields || []).map((field: string) => (
+            {qrFields.length > 0 && <div className="rounded-md border bg-accent/20 p-3 text-sm"><div className="font-medium">This template contains QR placeholders</div><div className="text-muted-foreground">{qrFields.map((field: string) => `{{${field}}}`).join(", ")}</div></div>}
+            <h3 className="font-medium">Text Merge Fields</h3>
+            {textFields.map((field: string) => (
               <div key={field} className="grid gap-2 md:grid-cols-[220px_1fr] md:items-center">
                 <Label>{`{{${field}}}`}</Label>
                 <Select value={columnMap[field] || ""} onValueChange={(value) => setColumnMap((current) => ({ ...current, [field]: value }))}>
@@ -177,6 +191,25 @@ export default function BulkPage() {
                 </Select>
               </div>
             ))}
+            {qrFields.length > 0 && <div className="space-y-4 rounded-md border p-4">
+              <h3 className="flex items-center gap-2 font-medium"><QrCode className="h-4 w-4" />QR Code Configuration</h3>
+              {qrFields.map((field: string) => {
+                const selected = qrCampaigns.find((campaign) => campaign.id === qrConfig[field]?.campaignId);
+                return (
+                  <div key={field} className="grid gap-3 rounded-md border bg-card p-3">
+                    <Label>{`{{${field}}}`} Campaign
+                      <select className="mt-2 w-full rounded-md border bg-background p-2" value={qrConfig[field]?.campaignId || ""} onChange={(event) => setQrConfig((current) => ({ ...current, [field]: { ...(current[field] || {}), campaignId: event.target.value, contentType: qrCampaigns.find((campaign) => campaign.id === event.target.value)?.type || "checkin" } }))}>
+                        <option value="">Select campaign</option>
+                        {qrCampaigns.map((campaign) => <option key={campaign.id} value={campaign.id}>{campaign.name} ({campaign.type})</option>)}
+                      </select>
+                    </Label>
+                    {selected?.type === "url" && <Label>URL template<Input placeholder="https://event.com/{{email}}" value={qrConfig[field]?.urlTemplate || ""} onChange={(event) => setQrConfig((current) => ({ ...current, [field]: { ...(current[field] || {}), urlTemplate: event.target.value } }))} /></Label>}
+                    {selected?.type === "text" && <Label>Text template<Input placeholder="Hi {{name}}" value={qrConfig[field]?.textTemplate || ""} onChange={(event) => setQrConfig((current) => ({ ...current, [field]: { ...(current[field] || {}), textTemplate: event.target.value } }))} /></Label>}
+                    {selected?.type === "checkin" && <p className="text-sm text-muted-foreground">Check-in QRs use the recipient CSV row values.</p>}
+                  </div>
+                );
+              })}
+            </div>}
             <Button onClick={() => setStep(4)}>Continue to Preview</Button>
           </CardContent>
         </Card>

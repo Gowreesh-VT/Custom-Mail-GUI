@@ -15,7 +15,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 import { formatInvalidImagesMessage, validateExternalImageUrls } from "@/lib/template-html";
-import { generateTemplateThumbnail, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER, validateHtmlTemplateClient } from "@/lib/template-client";
+import { generateTemplateThumbnail, replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER, validateHtmlTemplateClient } from "@/lib/template-client";
 
 type TemplateListItem = {
   _id: string;
@@ -149,7 +149,7 @@ export default function TemplatesPage() {
 
   const renderedPreview = useMemo(() => {
     if (!previewTemplate) return "";
-    return replaceTemplateValues(previewTemplate.bodyHtml, sampleValues);
+    return replaceQrPlaceholdersForPreview(replaceTemplateValues(previewTemplate.bodyHtml, sampleValues));
   }, [previewTemplate, sampleValues]);
 
   const visibleTemplates = filter === "favourites" ? templates.filter((template) => template.isFavourite) : templates;
@@ -201,7 +201,10 @@ export default function TemplatesPage() {
               <p className="text-xs text-muted-foreground">Modified {new Date(template.updatedAt).toLocaleString()}</p>
             </CardHeader>
             <CardContent className="space-y-4">
-              <Badge variant="secondary">{template.mergeFields?.length || 0} merge fields</Badge>
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary">{template.mergeFields?.length || 0} merge fields</Badge>
+                {template.mergeFields?.some((field) => /^qr_[a-z_]+$/.test(field)) && <Badge>Contains QR codes</Badge>}
+              </div>
               <div className="grid grid-cols-2 gap-2">
                 <Button variant="outline" size="sm" onClick={() => openPreview(template)}><Eye className="h-4 w-4" />Preview</Button>
                 <Button asChild variant="outline" size="sm"><Link href={`/templates/${template._id}/edit`}><Pencil className="h-4 w-4" />Edit</Link></Button>

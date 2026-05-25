@@ -9,7 +9,9 @@ import { apiFetch } from "@/lib/client-api";
 export default function AdminOverviewPage() {
   const [overview, setOverview] = useState<any>(null);
   const [chart, setChart] = useState<any>(null);
+  const [mounted, setMounted] = useState(false);
   useEffect(() => {
+    setMounted(true);
     apiFetch<any>("/api/admin/stats/overview").then(setOverview);
     apiFetch<any>("/api/admin/stats/chart").then(setChart);
     const timer = setInterval(() => apiFetch<any>("/api/admin/stats/overview").then(setOverview), 30000);
@@ -28,8 +30,8 @@ export default function AdminOverviewPage() {
     <div className="space-y-5">
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">{cards.map(([label, value]) => <Card key={label}><CardHeader className="pb-2"><CardTitle className="text-sm">{label}</CardTitle></CardHeader><CardContent><div className="text-2xl font-semibold">{value}</div></CardContent></Card>)}</div>
       <div className="grid gap-5 xl:grid-cols-3">
-        <Card className="xl:col-span-2"><CardHeader><CardTitle>User Activity</CardTitle></CardHeader><CardContent className="h-80"><ResponsiveContainer width="100%" height="100%"><BarChart data={chart?.byUser || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="sent" fill="hsl(var(--sent))" /><Bar dataKey="failed" fill="hsl(var(--failed))" /></BarChart></ResponsiveContainer></CardContent></Card>
-        <Card><CardHeader><CardTitle>Status Breakdown</CardTitle></CardHeader><CardContent className="h-80"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={(chart?.status || []).map((s: any) => ({ name: s._id, value: s.value }))} dataKey="value" nameKey="name" innerRadius={70}>{(chart?.status || []).map((_: any, i: number) => <Cell key={i} fill={["hsl(var(--sent))", "hsl(var(--failed))", "hsl(var(--scheduled))"][i % 3]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></CardContent></Card>
+        <Card className="xl:col-span-2"><CardHeader><CardTitle>User Activity</CardTitle></CardHeader><CardContent className="h-80">{mounted ? <ResponsiveContainer width="100%" height="100%"><BarChart data={chart?.byUser || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="sent" fill="hsl(var(--sent))" /><Bar dataKey="failed" fill="hsl(var(--failed))" /></BarChart></ResponsiveContainer> : null}</CardContent></Card>
+        <Card><CardHeader><CardTitle>Status Breakdown</CardTitle></CardHeader><CardContent className="h-80">{mounted ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={(chart?.status || []).map((s: any) => ({ name: s._id, value: s.value }))} dataKey="value" nameKey="name" innerRadius={70}>{(chart?.status || []).map((_: any, i: number) => <Cell key={i} fill={["hsl(var(--sent))", "hsl(var(--failed))", "hsl(var(--scheduled))"][i % 3]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer> : null}</CardContent></Card>
       </div>
       <div className="grid gap-5 xl:grid-cols-2">
         <Card><CardHeader><CardTitle>Top Senders</CardTitle></CardHeader><CardContent className="space-y-3">{(overview?.top || []).map((user: any, i: number) => <div key={user.email} className="flex items-center justify-between rounded-md border p-3"><span>{i + 1}. {user.name}<br /><span className="text-sm text-muted-foreground">{user.email}</span></span><Badge variant="sent">{user.sent} sent</Badge></div>)}</CardContent></Card>
