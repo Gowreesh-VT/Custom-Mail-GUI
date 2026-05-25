@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
-import { Check, FileSpreadsheet, Layers, Play, QrCode, Square, Upload } from "lucide-react";
+import { AlertTriangle, Check, FileSpreadsheet, Layers, Play, QrCode, Square, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,6 +39,7 @@ export default function BulkPage() {
   const [delayMs, setDelayMs] = useState(500);
   const [logs, setLogs] = useState<any[]>([]);
   const [sending, setSending] = useState(false);
+  const [qrWarningOpen, setQrWarningOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -79,13 +81,33 @@ export default function BulkPage() {
   const previewHtml = fullTemplate ? replaceQrPlaceholdersForPreview(replaceTemplateValues(fullTemplate.bodyHtml, mappedSample)) : "";
   const qrFields = (fullTemplate?.mergeFields || []).filter((field: string) => /^qr_[a-z_]+$/.test(field));
   const textFields = (fullTemplate?.mergeFields || []).filter((field: string) => !/^qr_[a-z_]+$/.test(field));
-  const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean) && qrFields.every((field: string) => qrConfig[field]?.campaignId);
+  const qrFieldConfigs = useMemo(() => qrFields
+    .filter((field: string) => qrConfig[field]?.campaignId)
+    .map((field: string) => ({
+      placeholderName: field,
+      campaignId: qrConfig[field].campaignId,
+      contentType: qrConfig[field].contentType,
+      campaignType: qrConfig[field].contentType,
+      urlTemplate: qrConfig[field].urlTemplate,
+      textTemplate: qrConfig[field].textTemplate,
+      width: qrConfig[field].width,
+      height: qrConfig[field].height,
+      alt: qrConfig[field].alt
+    })), [qrConfig, qrFields]);
+  const hasQrPlaceholders = qrFields.length > 0;
+  const hasMissingQrConfig = hasQrPlaceholders && qrFieldConfigs.length === 0;
+  const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean);
   const favouriteTemplates = templates.filter((template) => template.isFavourite);
   const otherTemplates = templates.filter((template) => !template.isFavourite);
 
-  async function sendBulk() {
+  async function sendBulk(sendAnyway = false) {
     if (!canSend || !file || !fullTemplate) return toast.error("Complete all steps before sending");
+    if (hasMissingQrConfig && !sendAnyway) {
+      setQrWarningOpen(true);
+      return;
+    }
     setSending(true);
+    setQrWarningOpen(false);
     setLogs([]);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -94,6 +116,7 @@ export default function BulkPage() {
     form.set("templateId", fullTemplate._id);
     form.set("columnMap", JSON.stringify(columnMap));
     form.set("qrConfig", JSON.stringify(qrConfig));
+    form.set("qrFieldConfigs", JSON.stringify(qrFieldConfigs));
     form.set("delayMs", String(delayMs));
     try {
       const res = await fetch("/api/send-bulk", { method: "POST", body: form, signal: controller.signal });
@@ -227,7 +250,7 @@ export default function BulkPage() {
               <CardContent className="space-y-3">
                 <div className="space-y-2"><Label>Delay between sends (ms)</Label><Input type="number" value={delayMs} onChange={(event) => setDelayMs(Number(event.target.value))} /></div>
                 <div className="flex gap-2">
-                  <Button disabled={!canSend || sending} onClick={sendBulk}><Play className="h-4 w-4" />Send All</Button>
+                  <Button disabled={!canSend || sending} onClick={() => sendBulk()}><Play className="h-4 w-4" />Send All</Button>
                   {sending && <Button variant="destructive" onClick={stopSending}><Square className="h-4 w-4" />Stop Sending</Button>}
                 </div>
               </CardContent>
@@ -246,6 +269,21 @@ export default function BulkPage() {
         <CardHeader><CardTitle>CSV Preview</CardTitle></CardHeader>
         <CardContent><Table><TableHeader><TableRow>{columns.map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.slice(0, 8).map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{row[column]}</TableCell>)}</TableRow>)}</TableBody></Table></CardContent>
       </Card>
+
+      <Dialog open={qrWarningOpen} onOpenChange={setQrWarningOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2"><AlertTriangle className="h-5 w-5 text-destructive" />QR campaign missing</DialogTitle>
+            <DialogDescription>
+              Your template has QR placeholders but no QR campaign is configured. Go back to Step 3 to configure QR codes or they will appear as broken images.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setQrWarningOpen(false); setStep(3); }}>Go Back</Button>
+            <Button variant="destructive" onClick={() => sendBulk(true)}>Send Anyway</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

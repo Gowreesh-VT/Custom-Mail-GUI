@@ -16,10 +16,18 @@ export async function POST(req: NextRequest) {
   const form = await req.formData();
   const file = form.get("csv");
   if (!(file instanceof File)) return jsonError("CSV file is required", 400);
-  const templateId = String(form.get("templateId") || "");
-  const delayMs = Number(form.get("delayMs") || 500);
-  const columnMap = fromJson<Record<string, string>>(String(form.get("columnMap") || "{}"), {});
-  const qrConfig = fromJson<Record<string, any>>(String(form.get("qrConfig") || "{}"), {});
+  const body = {
+    templateId: String(form.get("templateId") || ""),
+    delayMs: Number(form.get("delayMs") || 500),
+    columnMap: fromJson<Record<string, string>>(String(form.get("columnMap") || "{}"), {}),
+    qrConfig: fromJson<Record<string, any>>(String(form.get("qrConfig") || "{}"), {}),
+    qrFieldConfigs: fromJson<QrFieldConfig[]>(String(form.get("qrFieldConfigs") || "[]"), [])
+  };
+  console.log("[send-bulk] body keys:", Object.keys(body));
+  console.log("[send-bulk] qrFieldConfigs:", JSON.stringify(body.qrFieldConfigs));
+  console.log("[send-bulk] templateId:", body.templateId);
+
+  const { templateId, columnMap, delayMs, qrConfig, qrFieldConfigs: requestQrFieldConfigs = [] } = body;
   const template = await prisma.template.findFirst({ where: { id: templateId, userId: String(user._id) } });
   if (!template) return jsonError("Template not found", 404);
 
@@ -37,13 +45,20 @@ export async function POST(req: NextRequest) {
         const row = rows[index];
         const values = valuesFromMap(row, columnMap);
         const subject = applyMergeFields(template.subjectLine || template.name, values);
-        let bodyHtml = applyMergeFields(template.bodyHtml, values);
+        let bodyHtml = applyTextMergeFields(template.bodyHtml, values);
         const recipient = { email: row.email, data: { ...row, ...values } };
-        const qrFieldConfigs = buildQrFieldConfigs(qrConfig, bodyHtml);
+        const qrFieldConfigs = buildQrFieldConfigs(requestQrFieldConfigs, qrConfig, bodyHtml);
+        console.log("[send-bulk] recipient:", recipient.email);
+        console.log("[send-bulk] html before QR replace:", bodyHtml.includes("{{qr_") ? "HAS QR PLACEHOLDERS" : "no qr placeholders");
+        console.log("[send-bulk] qrFieldConfigs length:", qrFieldConfigs?.length ?? 0);
         if (qrFieldConfigs.length) {
           bodyHtml = await replaceQrPlaceholders(bodyHtml, qrFieldConfigs, recipient, String(user._id), {
+            onGenerated: (imageUrl) => {
+              console.log(`[send-bulk] QR generated for ${recipient.email}: ${imageUrl}`);
+            },
             onError: (error, config) => {
               failedQrCount += 1;
+              console.error(`[send-bulk] QR generation failed for ${recipient.email}:`, error);
               controller.enqueue(encoder.encode(`${toJson({ type: "qr_error", recipient: row.email, placeholder: config.placeholderName, error: error.message })}\n`));
             }
           });
@@ -110,9 +125,18 @@ function valuesFromMap(row: Record<string, string>, columnMap: Record<string, st
   return Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, row[column] || ""]));
 }
 
-function buildQrFieldConfigs(qrConfig: Record<string, any>, html: string): QrFieldConfig[] {
+function applyTextMergeFields(input: string, data: Record<string, string>) {
+  return input.replace(/\{\{\s*([\w.-]+)\s*\}\}/g, (token, key) => {
+    if (/^qr_[a-z_]+$/.test(key)) return token;
+    return data[key] ?? "";
+  });
+}
+
+function buildQrFieldConfigs(requestQrFieldConfigs: QrFieldConfig[], qrConfig: Record<string, any>, html: string): QrFieldConfig[] {
+  const byPlaceholder = new Map(requestQrFieldConfigs.map((config) => [config.placeholderName, config]));
   return detectQrPlaceholders(html).map((placeholder) => ({
     placeholderName: placeholder,
+    ...(byPlaceholder.get(placeholder) || {}),
     ...(qrConfig[placeholder] || {})
   }));
 }

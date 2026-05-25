@@ -223,7 +223,10 @@ export async function replaceQrPlaceholders(
   qrFieldConfigs: QrFieldConfig[],
   recipient: RecipientRow,
   userId: string,
-  options?: { onError?: (error: Error, config: QrFieldConfig) => void }
+  options?: {
+    onError?: (error: Error, config: QrFieldConfig) => void;
+    onGenerated?: (imageUrl: string, config: QrFieldConfig) => void;
+  }
 ) {
   let rendered = html;
   for (const config of qrFieldConfigs) {
@@ -243,6 +246,7 @@ export async function replaceQrPlaceholders(
         mergeData: recipient.data
       });
       const imageUrl = qrCode.imageUrl || getQrImageUrl(qrCode.id);
+      options?.onGenerated?.(imageUrl, config);
       const width = Number(config.width) || 200;
       const height = Number(config.height) || width;
       const alt = String(config.alt || "QR Code");
