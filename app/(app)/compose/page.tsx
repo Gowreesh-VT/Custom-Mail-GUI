@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Eye, Paperclip, Save, Send, Clock, Layers, Star } from "lucide-react";
+import { Eye, Loader2, Paperclip, Save, Send, Clock, Layers, Star } from "lucide-react";
 import { toast } from "sonner";
 import { RichEditor } from "@/components/rich-editor";
 import { TagInput } from "@/components/tag-input";
@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -29,15 +30,45 @@ export default function ComposePage() {
   const [scheduledAt, setScheduledAt] = useState("");
   const [trackingEnabled, setTrackingEnabled] = useState(true);
   const [quickStats, setQuickStats] = useState<any>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
   const [qrCampaigns, setQrCampaigns] = useState<any[]>([]);
   const [qrConfig, setQrConfig] = useState<Record<string, any>>({});
   const [previewHtml, setPreviewHtml] = useState("<p>Hello,</p>");
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [templatesLoading, setTemplatesLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
 
   useEffect(() => {
-    apiFetch<any>("/api/templates").then((d) => setTemplates(d.templates || [])).catch(() => {});
-    apiFetch<any>("/api/user/stats/quick").then(setQuickStats).catch(() => {});
-    apiFetch<{ campaigns: any[] }>("/api/qr/campaigns?isActive=true").then((data) => setQrCampaigns(data.campaigns)).catch(() => {});
+    let ignore = false;
+    const load = async () => {
+      setTemplatesLoading(true);
+      setStatsLoading(true);
+      try {
+        const [templateData, statsData, qrData] = await Promise.all([
+          apiFetch<any>("/api/templates"),
+          apiFetch<any>("/api/user/stats/quick"),
+          apiFetch<{ campaigns: any[] }>("/api/qr/campaigns?isActive=true")
+        ]);
+        if (ignore) return;
+        setTemplates(templateData.templates || []);
+        setQuickStats(statsData);
+        setQrCampaigns(qrData.campaigns);
+      } catch {
+        // Errors are handled elsewhere.
+      } finally {
+        if (!ignore) {
+          setTemplatesLoading(false);
+          setStatsLoading(false);
+        }
+      }
+    };
+    load();
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   useEffect(() => {
@@ -61,6 +92,7 @@ export default function ComposePage() {
 
   async function sendNow() {
     try {
+      setSending(true);
       await apiFetch("/api/send", {
         method: "POST",
         body: JSON.stringify({ to, cc, bcc, replyTo, subject, bodyHtml, trackingEnabled, qrConfig })
@@ -68,21 +100,36 @@ export default function ComposePage() {
       toast.success("Email sent");
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setSending(false);
     }
   }
 
   async function saveDraft() {
     try {
+      setSavingDraft(true);
+      setAutoSaveStatus("saving");
       await apiFetch("/api/drafts", { method: "POST", body: JSON.stringify({ to, cc, bcc, replyTo, subject, bodyHtml }) });
       toast.success("Draft saved");
+      setAutoSaveStatus("saved");
     } catch (error: any) {
       toast.error(error.message);
+      setAutoSaveStatus("error");
+    } finally {
+      setSavingDraft(false);
     }
   }
 
   async function saveTemplate(formData: FormData) {
-    await apiFetch("/api/templates", { method: "POST", body: JSON.stringify({ name: formData.get("name"), subject, bodyHtml }) });
-    toast.success("Template saved");
+    try {
+      setSavingTemplate(true);
+      await apiFetch("/api/templates", { method: "POST", body: JSON.stringify({ name: formData.get("name"), subject, bodyHtml }) });
+      toast.success("Template saved");
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSavingTemplate(false);
+    }
   }
 
   async function loadTemplate(template: any) {
@@ -157,7 +204,18 @@ export default function ComposePage() {
         <h1 className="text-2xl font-semibold tracking-normal">Compose</h1>
         <p className="text-sm text-muted-foreground">Write, preview, save, schedule, and send through your SMTP account.</p>
       </div>
-      {quickStats && <Card><CardContent className="grid gap-4 p-4 md:grid-cols-4"><QuickStat label="Sent today" value={quickStats.sentToday} limit={quickStats.dailyLimit} /><QuickStat label="Sent this month" value={quickStats.sentThisMonth} limit={quickStats.monthlyLimit} /><QuickStat label="Scheduled" value={quickStats.scheduled} /><QuickStat label="Drafts" value={quickStats.drafts} /></CardContent></Card>}
+      {statsLoading ? (
+        <Card>
+          <CardContent className="grid gap-4 p-4 md:grid-cols-4">
+            <div className="space-y-2"><Skeleton className="h-4 w-24" /><Skeleton className="h-6 w-16" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-28" /><Skeleton className="h-6 w-16" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-20" /><Skeleton className="h-6 w-16" /></div>
+            <div className="space-y-2"><Skeleton className="h-4 w-20" /><Skeleton className="h-6 w-16" /></div>
+          </CardContent>
+        </Card>
+      ) : quickStats ? (
+        <Card><CardContent className="grid gap-4 p-4 md:grid-cols-4"><QuickStat label="Sent today" value={quickStats.sentToday} limit={quickStats.dailyLimit} /><QuickStat label="Sent this month" value={quickStats.sentThisMonth} limit={quickStats.monthlyLimit} /><QuickStat label="Scheduled" value={quickStats.scheduled} /><QuickStat label="Drafts" value={quickStats.drafts} /></CardContent></Card>
+      ) : null}
       {dailyHit && <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">You&apos;ve reached your daily sending limit ({quickStats.dailyLimit} emails). Your limit resets at midnight.</div>}
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card>
@@ -180,11 +238,28 @@ export default function ComposePage() {
               <TabsContent value="raw"><Textarea value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} className="min-h-96 font-mono" /></TabsContent>
             </Tabs>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={sendNow} disabled={dailyHit}><Send className="h-4 w-4" />Send Now</Button>
-              <Button variant="outline" onClick={saveDraft}><Save className="h-4 w-4" />Save Draft</Button>
+              <Button onClick={sendNow} disabled={dailyHit || sending}>
+                {sending ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />Sending...</>
+                ) : (
+                  <><Send className="h-4 w-4" />Send Now</>
+                )}
+              </Button>
+              <Button variant="outline" onClick={saveDraft} disabled={savingDraft}>
+                {savingDraft ? (
+                  <><Loader2 className="h-4 w-4 animate-spin" />Saving...</>
+                ) : (
+                  <><Save className="h-4 w-4" />Save Draft</>
+                )}
+              </Button>
               <Dialog><DialogTrigger asChild><Button variant="outline"><Clock className="h-4 w-4" />Schedule</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Schedule Send</DialogTitle></DialogHeader><div className="space-y-4"><Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} /><Button onClick={schedule}>Schedule</Button></div></DialogContent></Dialog>
-              <Dialog><DialogTrigger asChild><Button variant="outline"><Layers className="h-4 w-4" />Save as Template</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Save Template</DialogTitle></DialogHeader><form action={saveTemplate} className="space-y-4"><Input name="name" placeholder="Template name" required /><Button>Save</Button></form></DialogContent></Dialog>
+              <Dialog><DialogTrigger asChild><Button variant="outline"><Layers className="h-4 w-4" />Save as Template</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Save Template</DialogTitle></DialogHeader><form action={saveTemplate} className="space-y-4"><Input name="name" placeholder="Template name" required /><Button disabled={savingTemplate}>{savingTemplate ? (<><Loader2 className="h-4 w-4 animate-spin" />Saving...</>) : "Save Template"}</Button></form></DialogContent></Dialog>
               <Button variant="outline"><Paperclip className="h-4 w-4" />Attachments</Button>
+            </div>
+            <div className="text-xs text-muted-foreground flex items-center gap-1">
+              {autoSaveStatus === "saving" && (<><Loader2 className="h-3 w-3 animate-spin" /> Saving draft...</>)}
+              {autoSaveStatus === "saved" && "✓ Draft saved"}
+              {autoSaveStatus === "error" && (<span className="text-destructive">Draft save failed</span>)}
             </div>
           </CardContent>
         </Card>
@@ -240,12 +315,26 @@ export default function ComposePage() {
           <Card>
             <CardHeader><CardTitle>Load Template</CardTitle></CardHeader>
             <CardContent className="space-y-2">
-              {favouriteTemplates.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Favourites</p>{favouriteTemplates.map((template) => <Button key={template._id} variant="outline" className="w-full justify-start" onClick={() => loadTemplate(template)}><Star className="h-4 w-4 fill-current" />{template.name}</Button>)}</div>}
-              {otherTemplates.map((template) => (
-                <Button key={template._id} variant="outline" className="w-full justify-start" onClick={() => loadTemplate(template)}>
-                  {template.name}
-                </Button>
-              ))}
+              {templatesLoading ? (
+                <div className="grid grid-cols-2 gap-3">
+                  {Array.from({ length: 6 }).map((_, index) => (
+                    <div key={index} className="space-y-2">
+                      <Skeleton className="h-20 w-full rounded-lg" />
+                      <Skeleton className="h-4 w-3/4" />
+                      <Skeleton className="h-3 w-1/2" />
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <>
+                  {favouriteTemplates.length > 0 && <div className="space-y-2"><p className="text-xs font-medium text-muted-foreground">Favourites</p>{favouriteTemplates.map((template) => <Button key={template._id} variant="outline" className="w-full justify-start" onClick={() => loadTemplate(template)}><Star className="h-4 w-4 fill-current" />{template.name}</Button>)}</div>}
+                  {otherTemplates.map((template) => (
+                    <Button key={template._id} variant="outline" className="w-full justify-start" onClick={() => loadTemplate(template)}>
+                      {template.name}
+                    </Button>
+                  ))}
+                </>
+              )}
             </CardContent>
           </Card>
         </div>

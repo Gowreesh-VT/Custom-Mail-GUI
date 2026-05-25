@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Eye, FileCode, Pencil, Plus, Search, Star, Trash2, Upload } from "lucide-react";
+import { Copy, Eye, FileCode, Loader2, Pencil, Plus, Search, Star, Trash2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
@@ -42,6 +43,7 @@ const emptyDraft: DraftTemplate = { bodyHtml: "", name: "", description: "", sub
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState("newest");
   const [filter, setFilter] = useState<"all" | "favourites">("all");
@@ -51,12 +53,21 @@ export default function TemplatesPage() {
   const [draft, setDraft] = useState<DraftTemplate>(emptyDraft);
   const [step, setStep] = useState<"source" | "details">("source");
   const [validationError, setValidationError] = useState("");
+  const [validating, setValidating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [generatingPreview, setGeneratingPreview] = useState(false);
+  const [testSending, setTestSending] = useState(false);
   const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
   const [device, setDevice] = useState<"desktop" | "mobile">("desktop");
 
   const loadTemplates = useCallback(async () => {
-    const data = await apiFetch<{ templates: TemplateListItem[] }>(`/api/templates?q=${encodeURIComponent(search)}&sort=${sort}`);
-    setTemplates(data.templates);
+    setLoading(true);
+    try {
+      const data = await apiFetch<{ templates: TemplateListItem[] }>(`/api/templates?q=${encodeURIComponent(search)}&sort=${sort}`);
+      setTemplates(data.templates);
+    } finally {
+      setLoading(false);
+    }
   }, [search, sort]);
 
   useEffect(() => {
@@ -64,17 +75,24 @@ export default function TemplatesPage() {
   }, [loadTemplates]);
 
   async function handleHtmlSource(bodyHtml: string) {
+    setValidating(true);
     setValidationError("");
-    const invalidImages = validateExternalImageUrls(bodyHtml);
-    if (invalidImages.length) {
-      setValidationError(formatInvalidImagesMessage(invalidImages));
-      return;
+    try {
+      const invalidImages = validateExternalImageUrls(bodyHtml);
+      if (invalidImages.length) {
+        setValidationError(formatInvalidImagesMessage(invalidImages));
+        return;
+      }
+      setGeneratingPreview(true);
+      const { mergeFields } = validateHtmlTemplateClient(bodyHtml);
+      const previewImage = await generateTemplateThumbnail(bodyHtml);
+      setDraft({ ...emptyDraft, bodyHtml, mergeFields, previewImage });
+      setStep("details");
+      toast.success(`Valid HTML - ${mergeFields.length} merge fields detected`);
+    } finally {
+      setGeneratingPreview(false);
+      setValidating(false);
     }
-    const { mergeFields } = validateHtmlTemplateClient(bodyHtml);
-    const previewImage = await generateTemplateThumbnail(bodyHtml);
-    setDraft({ ...emptyDraft, bodyHtml, mergeFields, previewImage });
-    setStep("details");
-    toast.success(`Valid HTML - ${mergeFields.length} merge fields detected`);
   }
 
   async function handleFile(file?: File | null) {
@@ -87,6 +105,7 @@ export default function TemplatesPage() {
   async function saveTemplate() {
     try {
       if (!draft.name.trim() || !draft.subjectLine.trim()) return toast.error("Template name and subject line are required");
+      setSaving(true);
       await apiFetch("/api/templates/upload", {
         method: "POST",
         body: JSON.stringify(draft)
@@ -96,6 +115,8 @@ export default function TemplatesPage() {
       loadTemplates();
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -189,31 +210,45 @@ export default function TemplatesPage() {
       </Card>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {visibleTemplates.map((template) => (
-          <Card key={template._id} className="overflow-hidden">
-            <div className="relative aspect-[16/10] border-b bg-muted">
-              <Button variant="secondary" size="icon" className="absolute right-2 top-2 z-10" onClick={() => toggleFavourite(template)}><Star className={`h-4 w-4 ${template.isFavourite ? "fill-current text-warning" : ""}`} /></Button>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={template.previewImage || TEMPLATE_THUMBNAIL_PLACEHOLDER} alt="" className="h-full w-full object-cover" />
+        {loading ? (
+          Array.from({ length: 8 }).map((_, index) => (
+            <div key={index} className="space-y-3">
+              <Skeleton className="h-40 w-full rounded-xl" />
+              <Skeleton className="h-4 w-3/4" />
+              <Skeleton className="h-3 w-1/2" />
+              <div className="flex gap-2">
+                <Skeleton className="h-7 w-16 rounded-md" />
+                <Skeleton className="h-7 w-12 rounded-md" />
+              </div>
             </div>
-            <CardHeader>
-              <CardTitle className="line-clamp-1 text-base">{template.name}</CardTitle>
-              <p className="text-xs text-muted-foreground">Modified {new Date(template.updatedAt).toLocaleString()}</p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary">{template.mergeFields?.length || 0} merge fields</Badge>
-                {template.mergeFields?.some((field) => /^qr_[a-z_]+$/.test(field)) && <Badge>Contains QR codes</Badge>}
+          ))
+        ) : (
+          visibleTemplates.map((template) => (
+            <Card key={template._id} className="overflow-hidden">
+              <div className="relative aspect-[16/10] border-b bg-muted">
+                <Button variant="secondary" size="icon" className="absolute right-2 top-2 z-10" onClick={() => toggleFavourite(template)}><Star className={`h-4 w-4 ${template.isFavourite ? "fill-current text-warning" : ""}`} /></Button>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={template.previewImage || TEMPLATE_THUMBNAIL_PLACEHOLDER} alt="" className="h-full w-full object-cover" />
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" onClick={() => openPreview(template)}><Eye className="h-4 w-4" />Preview</Button>
-                <Button asChild variant="outline" size="sm"><Link href={`/templates/${template._id}/edit`}><Pencil className="h-4 w-4" />Edit</Link></Button>
-                <Button variant="outline" size="sm" onClick={() => duplicateTemplate(template)}><Copy className="h-4 w-4" />Duplicate</Button>
-                <Button variant="outline" size="sm" onClick={() => deleteTemplate(template._id)}><Trash2 className="h-4 w-4" />Delete</Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+              <CardHeader>
+                <CardTitle className="line-clamp-1 text-base">{template.name}</CardTitle>
+                <p className="text-xs text-muted-foreground">Modified {new Date(template.updatedAt).toLocaleString()}</p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <Badge variant="secondary">{template.mergeFields?.length || 0} merge fields</Badge>
+                  {template.mergeFields?.some((field) => /^qr_[a-z_]+$/.test(field)) && <Badge>Contains QR codes</Badge>}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button variant="outline" size="sm" onClick={() => openPreview(template)}><Eye className="h-4 w-4" />Preview</Button>
+                  <Button asChild variant="outline" size="sm"><Link href={`/templates/${template._id}/edit`}><Pencil className="h-4 w-4" />Edit</Link></Button>
+                  <Button variant="outline" size="sm" onClick={() => duplicateTemplate(template)}><Copy className="h-4 w-4" />Duplicate</Button>
+                  <Button variant="outline" size="sm" onClick={() => deleteTemplate(template._id)}><Trash2 className="h-4 w-4" />Delete</Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))
+        )}
       </div>
 
       <Dialog open={uploadOpen} onOpenChange={(open) => (open ? setUploadOpen(true) : resetDialogs())}>
@@ -230,10 +265,17 @@ export default function TemplatesPage() {
                 <span className="text-sm text-muted-foreground">.html only, max 2MB</span>
               </Label>
               <Input id="template-file" className="hidden" type="file" accept=".html,text/html" onChange={(event) => handleFile(event.target.files?.[0])} />
-              <ValidationError message={validationError} />
+              {validating ? (
+                <div className="flex flex-col items-center gap-3 py-6">
+                  <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Validating template...</p>
+                </div>
+              ) : (
+                <ValidationError message={validationError} />
+              )}
             </div>
           ) : (
-            <TemplateDetails draft={draft} setDraft={setDraft} onSave={saveTemplate} />
+            <TemplateDetails draft={draft} setDraft={setDraft} onSave={saveTemplate} saving={saving} generatingPreview={generatingPreview} />
           )}
         </DialogContent>
       </Dialog>
@@ -244,7 +286,7 @@ export default function TemplatesPage() {
             <DialogTitle>Paste HTML</DialogTitle>
             <DialogDescription>Paste raw HTML, validate external image URLs, then save template details.</DialogDescription>
           </DialogHeader>
-          {step === "source" ? <PasteHtmlStep onValidate={handleHtmlSource} validationError={validationError} /> : <TemplateDetails draft={draft} setDraft={setDraft} onSave={saveTemplate} />}
+          {step === "source" ? <PasteHtmlStep onValidate={handleHtmlSource} validationError={validationError} validating={validating} /> : <TemplateDetails draft={draft} setDraft={setDraft} onSave={saveTemplate} saving={saving} generatingPreview={generatingPreview} />}
         </DialogContent>
       </Dialog>
 
@@ -260,7 +302,19 @@ export default function TemplatesPage() {
                 <div className="flex gap-2">
                   <Button variant={device === "desktop" ? "secondary" : "outline"} size="sm" onClick={() => setDevice("desktop")}>Desktop</Button>
                   <Button variant={device === "mobile" ? "secondary" : "outline"} size="sm" onClick={() => setDevice("mobile")}>Mobile</Button>
-                  <Button size="sm" onClick={() => apiFetch(`/api/templates/${previewTemplate._id}/test`, { method: "POST", body: "{}" }).then(() => toast.success("Test email sent")).catch((e) => toast.error(e.message))}>Send Test Email</Button>
+                  <Button size="sm" onClick={async () => {
+                    try {
+                      setTestSending(true);
+                      await apiFetch(`/api/templates/${previewTemplate._id}/test`, { method: "POST", body: "{}" });
+                      toast.success("Test email sent");
+                    } catch (e: any) {
+                      toast.error(e.message);
+                    } finally {
+                      setTestSending(false);
+                    }
+                  }} disabled={testSending}>
+                    {testSending ? (<><Loader2 className="h-4 w-4 animate-spin" />Sending test...</>) : "Send Test Email"}
+                  </Button>
                 </div>
               )}
             </div>
@@ -300,23 +354,45 @@ export default function TemplatesPage() {
   );
 }
 
-function PasteHtmlStep({ onValidate, validationError }: { onValidate: (html: string) => void; validationError: string }) {
+function PasteHtmlStep({ onValidate, validationError, validating }: { onValidate: (html: string) => void; validationError: string; validating: boolean }) {
   const [html, setHtml] = useState("");
   return (
     <div className="grid min-h-0 grid-rows-[1fr_auto] gap-3">
       <Textarea value={html} onChange={(event) => setHtml(event.target.value)} className="min-h-0 resize-none font-mono" placeholder="<html>...</html>" />
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-muted-foreground">{html.length.toLocaleString()} characters</span>
-        <Button onClick={() => onValidate(html)}>Validate & Continue</Button>
+        <Button onClick={() => onValidate(html)} disabled={validating}>
+          {validating ? (<><Loader2 className="h-4 w-4 animate-spin" />Validating...</>) : "Validate & Continue"}
+        </Button>
       </div>
-      <ValidationError message={validationError} />
+      {validating ? (
+        <div className="flex flex-col items-center gap-3 py-4">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Validating template...</p>
+        </div>
+      ) : (
+        <ValidationError message={validationError} />
+      )}
     </div>
   );
 }
 
-function TemplateDetails({ draft, setDraft, onSave }: { draft: DraftTemplate; setDraft: (draft: DraftTemplate) => void; onSave: () => void }) {
+function TemplateDetails({ draft, setDraft, onSave, saving, generatingPreview }: { draft: DraftTemplate; setDraft: (draft: DraftTemplate) => void; onSave: () => void; saving: boolean; generatingPreview: boolean }) {
   return (
     <div className="space-y-4">
+      <div className="h-40 w-full overflow-hidden rounded-xl bg-muted flex items-center justify-center">
+        {generatingPreview ? (
+          <div className="flex flex-col items-center gap-2">
+            <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            <span className="text-xs text-muted-foreground">Generating preview...</span>
+          </div>
+        ) : draft.previewImage ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={draft.previewImage} alt="" className="h-40 w-full object-cover object-top" />
+        ) : (
+          <span className="text-xs text-muted-foreground">No Preview</span>
+        )}
+      </div>
       <div className="rounded-md border bg-accent/20 p-3 text-sm">
         Valid HTML - {draft.mergeFields.length} merge fields detected: {draft.mergeFields.map((field) => `{{${field}}}`).join(", ") || "none"}
       </div>
@@ -331,7 +407,9 @@ function TemplateDetails({ draft, setDraft, onSave }: { draft: DraftTemplate; se
           {draft.mergeFields.map((field) => <Badge key={field} variant="secondary" className="cursor-pointer" onClick={() => setDraft({ ...draft, mergeFields: draft.mergeFields.filter((item) => item !== field) })}>{`{{${field}}}`} ×</Badge>)}
         </div>
       </div>
-      <Button onClick={onSave}>Save Template</Button>
+      <Button onClick={onSave} disabled={saving}>
+        {saving ? (<><Loader2 className="h-4 w-4 animate-spin" />Saving...</>) : "Save Template"}
+      </Button>
     </div>
   );
 }
