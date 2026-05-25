@@ -1,0 +1,23 @@
+name: Process Scheduled Emails
+
+on:
+  schedule:
+    - cron: '* * * * *'
+  workflow_dispatch:
+
+jobs:
+  process:
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+
+    steps:
+      - name: Process due scheduled emails
+        run: |
+          curl -X POST \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            -H "Content-Type: application/json" \
+            --max-time 30 \
+            --silent \
+            --show-error \
+            "${{ secrets.APP_URL }}/api/cron/process-scheduled"
+          echo "Exit code: $?"

@@ -26,6 +26,7 @@ JWT_ACCESS_SECRET=replace-with-a-long-random-secret
 JWT_REFRESH_SECRET=replace-with-another-long-random-secret
 ENCRYPTION_SECRET=replace-with-a-long-random-secret
 NEXT_PUBLIC_APP_URL=http://localhost:3000
+CRON_SECRET=replace-with-a-long-random-secret
 ```
 
 `ENCRYPTION_SECRET` is hashed to a 256-bit key and used only for SMTP password encryption.
@@ -104,3 +105,6 @@ Example inputs:
 - HTML templates live under `templates/` for batch sending and reference.
 - Attachments uploaded through the API are stored locally under `uploads/<userId>/`.
 - BullMQ stores scheduled jobs in Redis and the app stores scheduled-email state in PostgreSQL.
+- Scheduled emails are processed by a GitHub Actions workflow that hits `/api/cron/process-scheduled` every minute. Configure GitHub Secrets:
+	- `APP_URL` (public base URL, e.g. https://your-app.vercel.app)
+	- `CRON_SECRET` (must match the server `CRON_SECRET` value)
