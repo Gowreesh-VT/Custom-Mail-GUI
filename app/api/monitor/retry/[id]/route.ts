@@ -2,12 +2,14 @@ import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { sendMailForUser } from "@/lib/mailer";
 import { jsonError } from "@/lib/utils";
-import { Email } from "@/lib/models";
+import { prisma } from "@/lib/prisma";
+import { emailRecord } from "@/lib/records";
+import { toJson } from "@/lib/json-fields";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireUser(req);
   const { id } = await params;
-  const email = await Email.findOne({ _id: id, userId: user._id, status: "failed" });
+  const email = emailRecord(await prisma.email.findFirst({ where: { id, userId: String(user._id), status: "failed" } }));
   if (!email) return jsonError("Failed email not found", 404);
   try {
     await sendMailForUser(user, {
@@ -19,16 +21,16 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       bodyHtml: email.bodyHtml,
       attachments: email.attachments as any
     });
-    email.status = "sent";
-    email.errorMsg = undefined;
-    email.retryCount += 1;
-    email.retryHistory.push({ attemptedAt: new Date(), success: true });
-    await email.save();
+    await prisma.email.update({
+      where: { id },
+      data: { status: "sent", errorMsg: null, retryCount: { increment: 1 }, retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: true }]) }
+    });
     return Response.json({ success: true });
   } catch (error: any) {
-    email.retryCount += 1;
-    email.retryHistory.push({ attemptedAt: new Date(), success: false, error: error.message });
-    await email.save();
+    await prisma.email.update({
+      where: { id },
+      data: { retryCount: { increment: 1 }, retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: false, error: error.message }]) }
+    });
     return jsonError(error.message, 400, "RETRY_FAILED");
   }
 }
