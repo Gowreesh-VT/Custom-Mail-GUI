@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, FileClock, Mail, Server, Shield, Users } from "lucide-react";
+import { BarChart3, Bell, FileClock, Mail, ScanLine, Server, Shield, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ const nav = [
   { href: "/admin", label: "Overview", icon: BarChart3 },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/smtp", label: "SMTP", icon: Server },
+  { href: "/admin/operators", label: "Operators", icon: ScanLine },
   { href: "/admin/audit", label: "Audit Log", icon: FileClock },
   { href: "/admin/announcements", label: "Announcements", icon: Bell }
 ];
