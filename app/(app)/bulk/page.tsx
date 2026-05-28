@@ -58,6 +58,8 @@ export default function BulkPage() {
   const [certPreviewRow, setCertPreviewRow] = useState(0);
   const [delayMs, setDelayMs] = useState(500);
   const [logs, setLogs] = useState<any[]>([]);
+  const [hasRun, setHasRun] = useState(false);
+  const [logsCleared, setLogsCleared] = useState(false);
   const [parsingCsv, setParsingCsv] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sending, setSending] = useState(false);
@@ -181,6 +183,8 @@ export default function BulkPage() {
     }
     setSending(true);
     setQrWarningOpen(false);
+    setHasRun(true);
+    setLogsCleared(false);
     setLogs([]);
     const controller = new AbortController();
     abortRef.current = controller;
@@ -421,7 +425,7 @@ export default function BulkPage() {
       {step === 4 && fullTemplate && (
         <div className="space-y-6">
           {/* Top Panel: Live Status & Progress Bar */}
-          {(sending || logs.length > 0) && (
+          {(sending || hasRun) && (
             <Card className="border-border">
               <CardHeader className="pb-3">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -532,7 +536,7 @@ export default function BulkPage() {
               </Card>
 
               {/* Detailed Failure Report Panel */}
-              {stats.failureDetails.length > 0 && (
+              {!logsCleared && stats.failureDetails.length > 0 && (
                 <Card className="border-destructive/30 bg-destructive/5">
                   <CardHeader>
                     <CardTitle className="text-destructive flex items-center gap-2">
@@ -622,15 +626,15 @@ export default function BulkPage() {
                     <CardTitle className="text-sm font-semibold">Live Dispatch Logs</CardTitle>
                     <CardDescription className="text-[11px]">Real-time events</CardDescription>
                   </div>
-                  {logs.length > 0 && (
-                    <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2" onClick={() => setLogs([])}>
+                  {!logsCleared && logs.length > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2" onClick={() => setLogsCleared(true)}>
                       Clear Logs
                     </Button>
                   )}
                 </CardHeader>
                 <CardContent>
                   <div className="max-h-[360px] min-h-[160px] overflow-y-auto rounded-md border bg-zinc-950 p-3 font-mono text-[11px] text-zinc-200 shadow-inner divide-y divide-zinc-900">
-                    {logs.length === 0 ? (
+                    {logsCleared || logs.length === 0 ? (
                       <div className="h-full flex items-center justify-center text-zinc-500 py-10">
                         Console is empty. Start the run to see live feedback.
                       </div>

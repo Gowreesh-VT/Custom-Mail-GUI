@@ -35,7 +35,7 @@ export async function generateTemplateThumbnail(bodyHtml: string) {
     frame.style.height = "400px";
     frame.style.background = "white";
     document.body.appendChild(frame);
-    frame.srcdoc = bodyHtml;
+    frame.srcdoc = replaceQrPlaceholdersForPreview(bodyHtml);
     await new Promise((resolve) => {
       frame.onload = resolve;
       setTimeout(resolve, 1200);
