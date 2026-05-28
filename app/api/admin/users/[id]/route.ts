@@ -15,13 +15,28 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
   const user = await prisma.user.findUnique({ where: { id }, include: { smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 10 } } });
   if (!user) return jsonError("User not found", 404);
-  const [emails, templates, audits, scheduledPending] = await Promise.all([
+  const startOfMonth = new Date();
+  startOfMonth.setDate(1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const [emails, templates, audits, scheduledPending, sentThisMonth, failedTotal] = await Promise.all([
     prisma.email.findMany({ where: { userId: id }, orderBy: { sentAt: "desc" }, take: 100 }),
     prisma.template.findMany({ where: { userId: id }, select: { id: true, name: true, mergeFields: true, createdAt: true, updatedAt: true } }),
     prisma.auditLog.findMany({ where: { OR: [{ userId: id }, { targetId: id }] }, orderBy: { createdAt: "desc" }, take: 100 }),
-    prisma.scheduledEmail.count({ where: { userId: id, status: "pending" } })
+    prisma.scheduledEmail.count({ where: { userId: id, status: "pending" } }),
+    prisma.email.count({ where: { userId: id, status: "sent", sentAt: { gte: startOfMonth } } }),
+    prisma.email.count({ where: { userId: id, status: "failed" } })
   ]);
-  return Response.json({ success: true, user: { ...userRecord(user), passwordHash: undefined, smtpPasswordEnc: undefined }, emails: emails.map(emailRecord), templates: templates.map(templateRecord), audits: audits.map(auditRecord), scheduledPending });
+  return Response.json({
+    success: true,
+    user: { ...userRecord(user), passwordHash: undefined, smtpPasswordEnc: undefined },
+    emails: emails.map(emailRecord),
+    templates: templates.map(templateRecord),
+    audits: audits.map(auditRecord),
+    scheduledPending,
+    sentThisMonth,
+    failedTotal
+  });
 }
 
 export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

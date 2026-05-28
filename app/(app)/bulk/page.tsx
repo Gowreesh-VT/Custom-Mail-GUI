@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
-import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload } from "lucide-react";
+import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, XCircle, Clock, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -115,7 +115,7 @@ export default function BulkPage() {
         return toast.error('CSV must include an "email" column');
       }
       setColumns(fields);
-      setRows(parsed.data.filter((row) => row.email).slice(0, 100));
+      setRows(parsed.data.filter((row) => row.email));
       setStep(2);
     } finally {
       setParsingCsv(false);
@@ -240,6 +240,56 @@ export default function BulkPage() {
     setCertPreviewOpen(true);
   }
 
+  const stats = useMemo(() => {
+    let sent = 0;
+    let failed = 0;
+    let certs = 0;
+    let failedCerts = 0;
+    let failedQrs = 0;
+    const failureDetails: Array<{ email: string; reason: string; type: string }> = [];
+
+    logs.forEach((log) => {
+      if (log.type === "sent") {
+        sent++;
+      } else if (log.type === "failed") {
+        failed++;
+        failureDetails.push({
+          email: log.email || "Unknown Recipient",
+          reason: log.error || "Unknown SMTP delivery failure",
+          type: "Email Delivery"
+        });
+      } else if (log.type === "certificate_error") {
+        failedCerts++;
+        failureDetails.push({
+          email: log.recipient || "Unknown Recipient",
+          reason: log.error || "Certificate PDF generation error",
+          type: "Certificate Attachment"
+        });
+      } else if (log.type === "qr_error") {
+        failedQrs++;
+        failureDetails.push({
+          email: log.recipient || "Unknown Recipient",
+          reason: `${log.placeholder || "QR"}: ${log.error || "QR generation error"}`,
+          type: "QR Code Embedding"
+        });
+      }
+    });
+
+    const latestProgressLog = logs.find((l) => l.type === "sent" || l.type === "failed");
+    if (latestProgressLog) {
+      certs = latestProgressLog.certificateCount || 0;
+    }
+
+    return {
+      sent,
+      failed,
+      certs,
+      failedCerts,
+      failedQrs,
+      failureDetails
+    };
+  }, [logs]);
+
   return (
     <div className="space-y-5">
       <div>
@@ -361,7 +411,7 @@ export default function BulkPage() {
                   <Label className="md:col-span-2">Fallback<Input value={certificateFallbacks[field.placeholder] || ""} onChange={(event) => setCertificateFallbacks((current) => ({ ...current, [field.placeholder]: event.target.value }))} /></Label>
                 </div>
               ))}
-              <div className="flex flex-col gap-3 md:flex-row md:items-end"><Label>Preview recipient<select className="mt-2 w-full rounded-md border bg-background p-2" value={certPreviewRow} onChange={(event) => setCertPreviewRow(Number(event.target.value))}>{rows.map((row, index) => <option key={index} value={index}>{row.email || `Row ${index + 1}`}</option>)}</select></Label><Button variant="outline" onClick={previewCertificate}>Preview Certificate</Button></div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-end"><Label>Preview recipient<select className="mt-2 w-full rounded-md border bg-background p-2" value={certPreviewRow} onChange={(event) => setCertPreviewRow(Number(event.target.value))}>{rows.slice(0, 100).map((row, index) => <option key={index} value={index}>{row.email || `Row ${index + 1}`}</option>)}</select></Label><Button variant="outline" onClick={previewCertificate}>Preview Certificate</Button></div>
             </div>}
             <Button onClick={() => setStep(4)}>Continue to Preview</Button>
           </CardContent>
@@ -369,43 +419,252 @@ export default function BulkPage() {
       )}
 
       {step === 4 && fullTemplate && (
-        <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
-          <Card>
-            <CardHeader><CardTitle>Preview</CardTitle><CardDescription>{replaceTemplateValues(fullTemplate.subjectLine || fullTemplate.subject || "", mappedSample)}</CardDescription></CardHeader>
-            <CardContent>
-              {previewLoading ? (
-                <div className="flex h-[560px] items-center justify-center rounded-md border bg-muted">
-                  <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                </div>
-              ) : (
-                <iframe title="Bulk preview" sandbox="" srcDoc={previewHtml} className="h-[560px] w-full rounded-md border bg-background" />
-              )}
-            </CardContent>
-          </Card>
-          <div className="space-y-5">
-            <Card>
-              <CardHeader><CardTitle>Send Controls</CardTitle></CardHeader>
-              <CardContent className="space-y-3">
-                {selectedCertificate && <div className="rounded-md border p-3 text-sm"><div className="font-medium">Certificate: {selectedCertificate.name}</div><div className="text-muted-foreground">1 PDF will be attached per email</div>{selectedCertificate.fields.map((field) => <div key={field.placeholder} className="text-xs text-muted-foreground">{field.placeholder} {"->"} {certificateFieldMappings[field.placeholder] || "fallback"}</div>)}</div>}
-                <div className="space-y-2"><Label>Delay between sends (ms)</Label><Input type="number" value={delayMs} onChange={(event) => setDelayMs(Number(event.target.value))} /></div>
-                <div className="flex gap-2">
-                  <Button disabled={!canSend || sending} onClick={() => sendBulk()}>
-                    {sending ? (
-                      <><Loader2 className="h-4 w-4 animate-spin" />Sending...</>
-                    ) : (
-                      <><Play className="h-4 w-4" />Send to {validRecipients} recipients</>
+        <div className="space-y-6">
+          {/* Top Panel: Live Status & Progress Bar */}
+          {(sending || logs.length > 0) && (
+            <Card className="border-border">
+              <CardHeader className="pb-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2 text-lg">
+                      {sending ? (
+                        <>
+                          <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                          <span>Sending Campaign in Progress...</span>
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle2 className="h-5 w-5 text-sent" />
+                          <span>Campaign Execution Finished</span>
+                        </>
+                      )}
+                    </CardTitle>
+                    <CardDescription>
+                      Real-time stats and status of the current bulk dispatch job.
+                    </CardDescription>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {sending && (
+                      <Button variant="destructive" size="sm" onClick={stopSending}>
+                        <Square className="mr-1 h-3.5 w-3.5" />
+                        Stop Campaign
+                      </Button>
                     )}
-                  </Button>
-                  {sending && <Button variant="destructive" onClick={stopSending}><Square className="h-4 w-4" />Stop Sending</Button>}
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {/* Stats Grid */}
+                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+                  <div className="rounded-lg border bg-muted/40 p-4">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase">Successful</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-3xl font-extrabold text-foreground">{stats.sent}</span>
+                      <span className="text-xs text-muted-foreground">emails</span>
+                    </div>
+                  </div>
+
+                  <div className={`rounded-lg border p-4 ${stats.failed > 0 ? "border-destructive/20 bg-destructive/5" : "bg-muted/40"}`}>
+                    <div className="text-xs font-semibold text-muted-foreground uppercase">Failed</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className={`text-3xl font-extrabold ${stats.failed > 0 ? "text-destructive" : "text-foreground"}`}>{stats.failed}</span>
+                      <span className="text-xs text-muted-foreground">emails</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-muted/40 p-4">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase">Certificates</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-3xl font-extrabold text-foreground">{stats.certs}</span>
+                      <span className="text-xs text-muted-foreground">attached</span>
+                    </div>
+                  </div>
+
+                  <div className="rounded-lg border bg-muted/40 p-4">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase">Completion Rate</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-3xl font-extrabold text-foreground">
+                        {validRecipients > 0
+                          ? `${Math.round(((stats.sent + stats.failed) / validRecipients) * 100)}%`
+                          : "0%"}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        ({stats.sent + stats.failed} / {validRecipients})
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="space-y-1">
+                  <div className="h-2 w-full overflow-hidden rounded-full bg-accent">
+                    <div
+                      className="h-full bg-primary transition-all duration-300 ease-out"
+                      style={{
+                        width: `${validRecipients > 0 ? ((stats.sent + stats.failed) / validRecipients) * 100 : 0}%`,
+                      }}
+                    />
+                  </div>
                 </div>
               </CardContent>
             </Card>
-            <Card>
-              <CardHeader><CardTitle>Progress</CardTitle></CardHeader>
-              <CardContent className="max-h-96 space-y-2 overflow-auto">
-                {logs.map((log, index) => <div key={index} className="text-sm"><Badge variant={log.type === "failed" ? "failed" : log.type === "sent" ? "sent" : "scheduled"}>{log.type}</Badge> {log.email || log.total || log.error}</div>)}
-              </CardContent>
-            </Card>
+          )}
+
+          <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
+            {/* Left Column: Preview */}
+            <div className="space-y-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Template & Merge Preview</CardTitle>
+                  <CardDescription>
+                    {replaceTemplateValues(fullTemplate.subjectLine || fullTemplate.subject || "", mappedSample)}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {previewLoading ? (
+                    <div className="flex h-[500px] items-center justify-center rounded-md border bg-muted">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  ) : (
+                    <iframe title="Bulk preview" sandbox="" srcDoc={previewHtml} className="h-[500px] w-full rounded-md border bg-background" />
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Detailed Failure Report Panel */}
+              {stats.failureDetails.length > 0 && (
+                <Card className="border-destructive/30 bg-destructive/5">
+                  <CardHeader>
+                    <CardTitle className="text-destructive flex items-center gap-2">
+                      <AlertTriangle className="h-5 w-5 animate-pulse" />
+                      Detailed Failure Breakdown ({stats.failureDetails.length})
+                    </CardTitle>
+                    <CardDescription>
+                      Check the exact reason why these emails failed to deliver or why assets could not generate.
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="max-h-80 overflow-y-auto rounded-md border border-destructive/20 bg-background divide-y divide-border">
+                      {stats.failureDetails.map((failure, idx) => (
+                        <div key={idx} className="flex flex-col gap-2 p-3 text-sm hover:bg-muted/10 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-semibold text-foreground">{failure.email}</span>
+                              <Badge variant="failed" className="text-[10px] px-1.5 py-0 uppercase">
+                                {failure.type}
+                              </Badge>
+                            </div>
+                            <p className="text-xs font-mono text-destructive bg-destructive/5 border border-destructive/10 rounded px-2 py-1 leading-relaxed break-all">
+                              {failure.reason}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Right Column: Controls and Live Progress */}
+            <div className="space-y-5">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Send Controls</CardTitle>
+                  <CardDescription>Configure delay and trigger the bulk run.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {selectedCertificate && (
+                    <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1.5">
+                      <div className="font-medium flex items-center gap-1"><Award className="h-3.5 w-3.5" />Certificate Enabled:</div>
+                      <div className="text-muted-foreground truncate">{selectedCertificate.name}</div>
+                      <div className="text-[10px] text-muted-foreground border-t pt-1.5 mt-1.5">
+                        1 personalized PDF will be generated and attached to each recipient.
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="delay">Delay between emails (ms)</Label>
+                    <Input
+                      id="delay"
+                      type="number"
+                      min={0}
+                      value={delayMs}
+                      disabled={sending}
+                      onChange={(event) => setDelayMs(Number(event.target.value))}
+                    />
+                    <p className="text-[10px] text-muted-foreground">Adding a delay helps avoid hitting rate limits or spam filters.</p>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <Button className="flex-1" disabled={!canSend || sending} onClick={() => sendBulk()}>
+                      {sending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-4 w-4" />
+                          Start Sending ({validRecipients})
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Console log display */}
+              <Card>
+                <CardHeader className="pb-3 flex flex-row items-center justify-between">
+                  <div>
+                    <CardTitle className="text-sm font-semibold">Live Dispatch Logs</CardTitle>
+                    <CardDescription className="text-[11px]">Real-time events</CardDescription>
+                  </div>
+                  {logs.length > 0 && (
+                    <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2" onClick={() => setLogs([])}>
+                      Clear Logs
+                    </Button>
+                  )}
+                </CardHeader>
+                <CardContent>
+                  <div className="max-h-[360px] min-h-[160px] overflow-y-auto rounded-md border bg-zinc-950 p-3 font-mono text-[11px] text-zinc-200 shadow-inner divide-y divide-zinc-900">
+                    {logs.length === 0 ? (
+                      <div className="h-full flex items-center justify-center text-zinc-500 py-10">
+                        Console is empty. Start the run to see live feedback.
+                      </div>
+                    ) : (
+                      logs.map((log, index) => {
+                        const isFailed = log.type === "failed" || log.type === "certificate_error" || log.type === "qr_error";
+                        return (
+                          <div key={index} className="py-2 first:pt-0 last:pb-0 space-y-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="truncate text-zinc-300 font-semibold">{log.email || log.recipient || "System Log"}</span>
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${
+                                isFailed 
+                                  ? "bg-red-500/10 text-red-400 border border-red-500/20" 
+                                  : log.type === "sent" 
+                                    ? "bg-green-500/10 text-green-400 border border-green-500/20" 
+                                    : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                              }`}>
+                                {log.type}
+                              </span>
+                            </div>
+                            {log.error && (
+                              <div className="text-red-400 whitespace-pre-wrap pl-1 border-l-2 border-red-500/50 mt-1 leading-normal font-sans">
+                                Reason: {log.error}
+                              </div>
+                            )}
+                            {log.total && <div className="text-zinc-500">Initiated total recipients: {log.total}</div>}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
         </div>
       )}

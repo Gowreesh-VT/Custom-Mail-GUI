@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Award, BarChart3, Clock, FileText, Layers, LogOut, Mail, Menu, Moon, PenLine, QrCode, Send, Settings, Sun } from "lucide-react";
+import { Award, BarChart3, Clock, FileText, Layers, LogOut, Mail, Menu, Moon, PenLine, QrCode, Send, Settings, Shield, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -52,6 +52,14 @@ function SidebarBody() {
       </nav>
       <div className="mt-auto space-y-3">
         <Separator />
+        {me?.user?.role === "admin" && (
+          <Button asChild variant="outline" className="w-full justify-start">
+            <Link href="/admin">
+              <Shield className="h-4 w-4" />
+              Go to Admin Dashboard
+            </Link>
+          </Button>
+        )}
         <div className="flex items-center justify-between rounded-md border p-3 text-sm">
           <span className="flex items-center gap-2"><span className={cn("h-2.5 w-2.5 rounded-full", me?.smtpConfigured ? "bg-sent" : "bg-failed")} /> SMTP</span>
           <Button variant="ghost" size="icon" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Toggle theme">
@@ -71,7 +79,7 @@ function SidebarBody() {
 export function AppSidebar() {
   return (
     <>
-      <aside className="hidden h-screen w-64 shrink-0 border-r bg-card p-4 lg:block"><SidebarBody /></aside>
+      <aside className="hidden h-screen w-64 shrink-0 border-r bg-card p-4 lg:block sticky top-0"><SidebarBody /></aside>
       <div className="sticky top-0 z-30 flex items-center gap-3 border-b bg-background/95 p-3 backdrop-blur lg:hidden">
         <Sheet>
           <SheetTrigger asChild><Button variant="outline" size="icon"><Menu className="h-4 w-4" /></Button></SheetTrigger>
