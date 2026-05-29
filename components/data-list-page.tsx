@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { apiFetch } from "@/lib/client-api";
@@ -35,7 +36,7 @@ export function SentPageClient() {
     <TablePage
       title="Sent History"
       rows={emails}
-      columns={["Date", "To", "Subject", "Status", "Opens", "Clicks"]}
+      columns={["Date", "To", "Subject", "Status", "Opens", "Clicks", "Actions"]}
       loading={loading}
       skeletonRows={
         Array.from({ length: 8 }).map((_, index) => (
@@ -46,6 +47,7 @@ export function SentPageClient() {
             <TableCell><Skeleton className="h-5 w-16 rounded-full" /></TableCell>
             <TableCell><Skeleton className="h-4 w-8" /></TableCell>
             <TableCell><Skeleton className="h-4 w-8" /></TableCell>
+            <TableCell><Skeleton className="h-8 w-32" /></TableCell>
           </TableRow>
         ))
       }
@@ -55,7 +57,17 @@ export function SentPageClient() {
         <details key="d"><summary>{row.subject}</summary><div className="mt-2 text-sm text-muted-foreground">First opened: {row.firstOpenedAt ? new Date(row.firstOpenedAt).toLocaleString() : "Never"}<br />Total opens: {row.openCount || 0}<br />Total clicks: {row.clickCount || 0}</div></details>,
         <Badge key="s" variant={row.status === "sent" ? "sent" : "failed"}>{row.status}</Badge>,
         row.openCount || 0,
-        row.clickCount || 0
+        row.clickCount || 0,
+        <div key="actions" className="flex gap-2">
+          <Button asChild variant="outline" size="sm" className="h-7 text-xs px-2.5">
+            <Link href={`/sent/${row._id}`}>View Email</Link>
+          </Button>
+          {row.bulkJobId && (
+            <Button asChild variant="outline" size="sm" className="h-7 text-xs px-2.5">
+              <Link href={`/sent/campaign/${row.bulkJobId}`}>View Campaign</Link>
+            </Button>
+          )}
+        </div>
       ]}
     />
   );

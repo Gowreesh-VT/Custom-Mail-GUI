@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import { Award, BarChart3, Clock, FileText, Layers, LogOut, Mail, Menu, Moon, PenLine, QrCode, Send, Settings, Shield, Sun } from "lucide-react";
 import { useTheme } from "@/components/theme-provider";
@@ -39,7 +40,10 @@ function SidebarBody() {
   }
   return (
     <div className="flex h-full flex-col gap-4">
-      <div className="flex items-center gap-2 px-2 text-lg font-semibold"><Mail className="h-5 w-5" /> Custom Mail</div>
+      <div className="flex items-center gap-2 px-2 text-lg font-semibold">
+        <Image src="/main-logo.svg" alt="Custom Mail" width={32} height={32} className="h-8 w-8" />
+        Custom Mail
+      </div>
       <nav className="grid gap-1">
         {nav.map((item) => {
           const active = pathname === item.href;
@@ -91,7 +95,10 @@ export function AppSidebar() {
           <SheetTrigger asChild><Button variant="outline" size="icon"><Menu className="h-4 w-4" /></Button></SheetTrigger>
           <SheetContent side="left"><SheetHeader><SheetTitle>Navigation</SheetTitle></SheetHeader><div className="mt-6 h-[calc(100%-4rem)]"><SidebarBody /></div></SheetContent>
         </Sheet>
-        <span className="font-semibold">Custom Mail</span>
+        <span className="flex items-center gap-2 font-semibold">
+          <Image src="/main-logo.svg" alt="Custom Mail" width={32} height={32} className="h-8 w-8" />
+          Custom Mail
+        </span>
       </div>
     </>
   );

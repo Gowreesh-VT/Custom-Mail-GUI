@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,6 +30,9 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   return (
     <Card className="w-full max-w-md">
       <CardHeader>
+        <div className="flex justify-center">
+          <Image src="/main-logo.svg" alt="Custom Mail" width={72} height={72} className="h-18 w-18" />
+        </div>
         <CardTitle>{mode === "login" ? "Log in" : "Create account"}</CardTitle>
         <CardDescription>{mode === "login" ? "Access your SMTP email client." : "Start with your own isolated workspace."}</CardDescription>
       </CardHeader>
