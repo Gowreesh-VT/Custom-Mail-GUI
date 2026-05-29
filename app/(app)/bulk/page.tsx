@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Papa from "papaparse";
-import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -65,6 +65,13 @@ export default function BulkPage() {
   const [sending, setSending] = useState(false);
   const [qrWarningOpen, setQrWarningOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+
+  // Validation & Deduplication States
+  const [validationLoading, setValidationLoading] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [validationReport, setValidationReport] = useState<any>(null);
+  const [checkSentGlobally, setCheckSentGlobally] = useState(true);
+  const [checkSentHistory, setCheckSentHistory] = useState(true);
 
   useEffect(() => {
     let ignore = false;
@@ -174,6 +181,166 @@ export default function BulkPage() {
     const timer = setTimeout(() => setPreviewLoading(false), 200);
     return () => clearTimeout(timer);
   }, [previewHtml, step, fullTemplate]);
+
+  const duplicateEmailsSet = useMemo(() => {
+    const counts: Record<string, number> = {};
+    rows.forEach((row) => {
+      const email = String(row.email || "").toLowerCase().trim();
+      if (email) counts[email] = (counts[email] || 0) + 1;
+    });
+    return new Set(Object.keys(counts).filter((email) => counts[email] > 1));
+  }, [rows]);
+
+  function deduplicateKeepFirst() {
+    const seen = new Set<string>();
+    const nextRows = rows.filter((row) => {
+      const email = String(row.email || "").toLowerCase().trim();
+      if (seen.has(email)) return false;
+      seen.add(email);
+      return true;
+    });
+    setRows(nextRows);
+    toast.success(`Removed duplicates (kept first). Remaining: ${nextRows.length}`);
+  }
+
+  function deduplicateKeepLast() {
+    const seen = new Set<string>();
+    const nextRows = [...rows].reverse().filter((row) => {
+      const email = String(row.email || "").toLowerCase().trim();
+      if (seen.has(email)) return false;
+      seen.add(email);
+      return true;
+    }).reverse();
+    setRows(nextRows);
+    toast.success(`Removed duplicates (kept last). Remaining: ${nextRows.length}`);
+  }
+
+  async function runPreSendValidation() {
+    if (!canSend || !file || !fullTemplate) return toast.error("Complete all steps first");
+    setValidationLoading(true);
+    try {
+      const requiredCols = ["email", ...Object.values(columnMap)];
+      
+      const invalidEmails: Array<{ email: string; row: number; reason: string }> = [];
+      const duplicatesMap: Record<string, number[]> = {};
+      const requiredColsMissing: string[] = [];
+      
+      const missingCols = requiredCols.filter(col => !columns.includes(col));
+      if (missingCols.length > 0) {
+        requiredColsMissing.push(...missingCols);
+      }
+      
+      rows.forEach((row, index) => {
+        const rowNum = index + 1;
+        const email = String(row.email || "").trim();
+        
+        if (!email) {
+          invalidEmails.push({ email: "(Empty)", row: rowNum, reason: "Email is empty" });
+        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+          invalidEmails.push({ email, row: rowNum, reason: "Invalid format" });
+        }
+        
+        Object.entries(row).forEach(([col, val]) => {
+          if (val && /[\x00-\x1F\x7F-\x9F]/.test(val)) {
+            invalidEmails.push({ email: email || `Row ${rowNum}`, row: rowNum, reason: `Control characters in "${col}"` });
+          }
+        });
+        
+        if (email) {
+          const key = email.toLowerCase();
+          if (!duplicatesMap[key]) duplicatesMap[key] = [];
+          duplicatesMap[key].push(rowNum);
+        }
+      });
+      
+      const duplicatesList = Object.entries(duplicatesMap)
+        .filter(([, rows]) => rows.length > 1)
+        .map(([email, rows]) => ({ email, rows }));
+        
+      const emailList = rows.map((r) => String(r.email || "").toLowerCase().trim()).filter(Boolean);
+      
+      let invalidMxDomains: string[] = [];
+      let alreadySent: string[] = [];
+      
+      if (emailList.length > 0) {
+        const res = await apiFetch<any>("/api/validate-bulk", {
+          method: "POST",
+          body: JSON.stringify({
+            emails: emailList,
+            templateId: fullTemplate._id,
+            globalCheck: checkSentGlobally
+          })
+        });
+        invalidMxDomains = res.invalidMxDomains || [];
+        alreadySent = res.alreadySent || [];
+      }
+      
+      const invalidDomainsSet = new Set(invalidMxDomains.map(d => d.toLowerCase()));
+      const alreadySentSet = new Set(alreadySent.map(e => e.toLowerCase()));
+      
+      // Calculate final count
+      const finalSendRows = rows.filter((row) => {
+        const email = String(row.email || "").toLowerCase().trim();
+        if (!email) return false;
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+        const parts = email.split("@");
+        const domain = parts[parts.length - 1];
+        if (invalidDomainsSet.has(domain)) return false;
+        if (checkSentHistory && alreadySentSet.has(email)) return false;
+        return true;
+      });
+      
+      setValidationReport({
+        totalRows: rows.length,
+        validCount: rows.length - invalidEmails.length - invalidMxDomains.length,
+        invalidEmails,
+        invalidMxDomains,
+        duplicates: duplicatesList,
+        alreadySent,
+        finalCount: finalSendRows.length,
+        requiredColsMissing
+      });
+      setReportOpen(true);
+    } catch (e: any) {
+      toast.error(e.message || "Failed to run validations");
+    } finally {
+      setValidationLoading(false);
+    }
+  }
+
+  function proceedWithValidSend() {
+    if (!validationReport) return;
+    
+    const invalidDomainsSet = new Set(validationReport.invalidMxDomains.map((d: string) => d.toLowerCase()));
+    const alreadySentSet = new Set(validationReport.alreadySent.map((e: string) => e.toLowerCase()));
+    
+    const validRows = rows.filter((row) => {
+      const email = String(row.email || "").toLowerCase().trim();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+      const parts = email.split("@");
+      const domain = parts[parts.length - 1];
+      if (invalidDomainsSet.has(domain)) return false;
+      if (checkSentHistory && alreadySentSet.has(email)) return false;
+      return true;
+    });
+    
+    if (validRows.length === 0) {
+      toast.error("No valid emails remaining after filtering");
+      setReportOpen(false);
+      return;
+    }
+    
+    const csvString = Papa.unparse(validRows);
+    const updatedFile = new File([csvString], file?.name || "valid_emails.csv", { type: "text/csv" });
+    
+    setRows(validRows);
+    setFile(updatedFile);
+    setReportOpen(false);
+    
+    setTimeout(() => {
+      sendBulk(true);
+    }, 100);
+  }
 
   async function sendBulk(sendAnyway = false) {
     if (!canSend || !file || !fullTemplate) return toast.error("Complete all steps before sending");
@@ -602,11 +769,16 @@ export default function BulkPage() {
                   </div>
 
                   <div className="flex gap-2">
-                    <Button className="flex-1" disabled={!canSend || sending} onClick={() => sendBulk()}>
+                    <Button className="flex-1" disabled={!canSend || sending || validationLoading} onClick={runPreSendValidation}>
                       {sending ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Sending...
+                        </>
+                      ) : validationLoading ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Validating CSV...
                         </>
                       ) : (
                         <>
@@ -674,7 +846,25 @@ export default function BulkPage() {
       )}
 
       <Card>
-        <CardHeader><CardTitle>CSV Preview</CardTitle></CardHeader>
+        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3">
+          <div>
+            <CardTitle>CSV Preview</CardTitle>
+            <CardDescription>Preview of parsed data. Highlighted rows represent duplicate emails.</CardDescription>
+          </div>
+          {duplicateEmailsSet.size > 0 && (
+            <div className="flex items-center gap-2">
+              <Badge className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/10 border-yellow-500/20">
+                {duplicateEmailsSet.size} duplicates
+              </Badge>
+              <Button variant="outline" size="sm" onClick={deduplicateKeepFirst}>
+                Keep First
+              </Button>
+              <Button variant="outline" size="sm" onClick={deduplicateKeepLast}>
+                Keep Last
+              </Button>
+            </div>
+          )}
+        </CardHeader>
         <CardContent>
           {parsingCsv ? (
             <div className="flex flex-col items-center gap-3 py-10">
@@ -682,7 +872,23 @@ export default function BulkPage() {
               <p className="text-sm text-muted-foreground">Parsing CSV...</p>
             </div>
           ) : (
-            <Table><TableHeader><TableRow>{columns.map((key) => <TableHead key={key}>{key}</TableHead>)}</TableRow></TableHeader><TableBody>{rows.slice(0, 8).map((row, index) => <TableRow key={index}>{columns.map((column) => <TableCell key={column}>{row[column]}</TableCell>)}</TableRow>)}</TableBody></Table>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  {columns.map((key) => <TableHead key={key}>{key}</TableHead>)}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {rows.slice(0, 15).map((row, index) => {
+                  const isDuplicate = row.email && duplicateEmailsSet.has(row.email.toLowerCase().trim());
+                  return (
+                    <TableRow key={index} className={isDuplicate ? "bg-yellow-500/5 dark:bg-yellow-500/10 hover:bg-yellow-500/10" : ""}>
+                      {columns.map((column) => <TableCell key={column}>{row[column]}</TableCell>)}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
@@ -705,6 +911,215 @@ export default function BulkPage() {
         <DialogContent className="max-w-4xl">
           <DialogHeader><DialogTitle>Certificate Preview</DialogTitle></DialogHeader>
           {certPreviewPdf && <iframe title="Certificate preview" className="h-[720px] w-full rounded-md border" src={`data:application/pdf;base64,${certPreviewPdf}`} />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={reportOpen} onOpenChange={setReportOpen}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertCircle className="h-5 w-5 text-primary" />
+              Pre-Send CSV Validation Report
+            </DialogTitle>
+            <DialogDescription>
+              We validated your list. Review the summary and choose how to proceed.
+            </DialogDescription>
+          </DialogHeader>
+
+          {validationReport && (
+            <div className="space-y-4 py-2">
+              {/* Summary Stats Row */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <Card className="bg-muted/40">
+                  <CardContent className="p-3 text-center">
+                    <div className="text-xs text-muted-foreground font-medium">Total Rows</div>
+                    <div className="text-xl font-bold mt-1">{validationReport.totalRows}</div>
+                  </CardContent>
+                </Card>
+                <Card className="border-green-500/20 bg-green-500/5">
+                  <CardContent className="p-3 text-center">
+                    <div className="text-xs text-green-600 dark:text-green-400 font-medium">Valid</div>
+                    <div className="text-xl font-bold text-green-600 dark:text-green-400 mt-1">
+                      {validationReport.validCount}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-red-500/20 bg-red-500/5">
+                  <CardContent className="p-3 text-center">
+                    <div className="text-xs text-red-600 dark:text-red-400 font-medium">Errors</div>
+                    <div className="text-xl font-bold text-red-600 dark:text-red-400 mt-1">
+                      {validationReport.invalidEmails.length + validationReport.invalidMxDomains.length}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card className="border-yellow-500/20 bg-yellow-500/5">
+                  <CardContent className="p-3 text-center">
+                    <div className="text-xs text-yellow-600 dark:text-yellow-400 font-medium">Already Sent</div>
+                    <div className="text-xl font-bold text-yellow-600 dark:text-yellow-400 mt-1">
+                      {validationReport.alreadySent.length}
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Toggle Options */}
+              <div className="flex flex-col gap-2 p-3 rounded-md border bg-muted/20 text-xs">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checkSentHistory}
+                    onChange={(e) => {
+                      setCheckSentHistory(e.target.checked);
+                      setValidationReport((prev: any) => {
+                        if (!prev) return prev;
+                        const invalidDomainsSet = new Set(prev.invalidMxDomains.map((d: string) => d.toLowerCase()));
+                        const alreadySentSet = new Set(prev.alreadySent.map((e: string) => e.toLowerCase()));
+                        const finalCount = rows.filter((row) => {
+                          const email = String(row.email || "").toLowerCase().trim();
+                          if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
+                          const parts = email.split("@");
+                          const domain = parts[parts.length - 1];
+                          if (invalidDomainsSet.has(domain)) return false;
+                          if (e.target.checked && alreadySentSet.has(email)) return false;
+                          return true;
+                        }).length;
+                        return { ...prev, finalCount };
+                      });
+                    }}
+                  />
+                  <span>Exclude addresses that already received emails (sent history cross-reference)</span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={checkSentGlobally}
+                    onChange={(e) => {
+                      setCheckSentGlobally(e.target.checked);
+                      toast.info("Sent history scope changed. Re-validating...");
+                      setTimeout(() => {
+                        runPreSendValidation();
+                      }, 100);
+                    }}
+                  />
+                  <span>Check sent history globally (uncheck to check by campaign template only)</span>
+                </label>
+              </div>
+
+              {/* Ready to send count */}
+              <div className="p-3 rounded-md border bg-green-500/10 text-green-800 dark:text-green-200 border-green-500/20 text-sm font-semibold flex items-center justify-between">
+                <span>Final Delivery Count:</span>
+                <span className="text-lg font-bold">{validationReport.finalCount} emails ready</span>
+              </div>
+
+              {/* Warnings details */}
+              <div className="space-y-3">
+                {/* 1. Missing required cols */}
+                {validationReport.requiredColsMissing.length > 0 && (
+                  <div className="space-y-1 text-xs">
+                    <div className="font-semibold text-red-500 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Missing Required Columns
+                    </div>
+                    <div className="bg-red-500/5 border border-red-500/10 p-2.5 rounded text-muted-foreground leading-relaxed">
+                      Your CSV is missing these columns mapped in your template:{" "}
+                      <span className="font-mono text-red-600 dark:text-red-400">
+                        {validationReport.requiredColsMissing.join(", ")}
+                      </span>. Please add them or map different columns first.
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Format errors or null bytes */}
+                {validationReport.invalidEmails.length > 0 && (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="font-semibold text-red-500 flex items-center gap-1">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Formatting Errors ({validationReport.invalidEmails.length})
+                    </div>
+                    <div className="max-h-36 overflow-y-auto border rounded divide-y bg-background font-mono text-[10px]">
+                      {validationReport.invalidEmails.map((err: any, idx: number) => (
+                        <div key={idx} className="p-2 flex items-center justify-between gap-2 hover:bg-muted/10">
+                          <span className="text-foreground truncate">{err.email}</span>
+                          <div className="flex gap-2 items-center shrink-0">
+                            <span className="text-zinc-500 font-medium">Row {err.row}</span>
+                            <span className="bg-red-500/10 text-red-400 px-1 py-0.5 rounded border border-red-500/20 text-[9px] uppercase font-semibold">
+                              {err.reason}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. MX Domain check failures */}
+                {validationReport.invalidMxDomains.length > 0 && (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="font-semibold text-red-500 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Invalid / Unresolvable Email Domains ({validationReport.invalidMxDomains.length})
+                    </div>
+                    <div className="max-h-32 overflow-y-auto border rounded p-2 bg-background flex flex-wrap gap-1.5">
+                      {validationReport.invalidMxDomains.map((domain: string, idx: number) => (
+                        <Badge key={idx} variant="destructive" className="bg-red-500/10 text-red-400 border-red-500/20 font-mono text-[10px] hover:bg-red-500/10">
+                          {domain}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. Duplicates report */}
+                {validationReport.duplicates.length > 0 && (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="font-semibold text-yellow-500 flex items-center gap-1">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Duplicate Recipients inside CSV ({validationReport.duplicates.length})
+                    </div>
+                    <div className="max-h-36 overflow-y-auto border rounded divide-y bg-background font-mono text-[10px]">
+                      {validationReport.duplicates.map((dup: any, idx: number) => (
+                        <div key={idx} className="p-2 flex items-center justify-between gap-2 hover:bg-muted/10">
+                          <span className="text-foreground truncate">{dup.email}</span>
+                          <span className="text-zinc-500 shrink-0 font-medium">Rows: {dup.rows.join(", ")}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. Already Sent emails */}
+                {validationReport.alreadySent.length > 0 && checkSentHistory && (
+                  <div className="space-y-1.5 text-xs">
+                    <div className="font-semibold text-orange-500 flex items-center gap-1">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      Already Sent Recipients ({validationReport.alreadySent.length})
+                    </div>
+                    <div className="max-h-32 overflow-y-auto border rounded p-2 bg-background flex flex-wrap gap-1.5 font-mono text-[10px]">
+                      {validationReport.alreadySent.map((email: string, idx: number) => (
+                        <span key={idx} className="bg-orange-500/10 text-orange-400 border border-orange-500/20 rounded px-1.5 py-0.5">
+                          {email}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="mt-4 gap-2 sm:gap-0">
+            <Button variant="outline" onClick={() => setReportOpen(false)}>
+              Fix CSV First
+            </Button>
+            <Button
+              disabled={!canSend || (validationReport && validationReport.finalCount === 0) || (validationReport && validationReport.requiredColsMissing.length > 0)}
+              onClick={proceedWithValidSend}
+              className="bg-green-600 hover:bg-green-700 text-white font-medium"
+            >
+              Proceed with Valid Only
+              <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

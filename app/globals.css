@@ -17,7 +17,7 @@
   --muted-foreground: rgb(82, 82, 82);
   --accent: rgb(249, 255, 252);
   --accent-foreground: rgb(13, 159, 93);
-  --destructive: rgb(245, 74, 136);
+  --destructive: rgb(248, 29, 69);
   --destructive-foreground: rgb(255, 255, 255);
   --border: rgb(244, 246, 248);
   --input: rgb(235, 235, 235);
@@ -29,7 +29,7 @@
   --warning: 38 92% 50%;
   --chart-1: rgb(81, 240, 168);
   --chart-2: rgb(126, 254, 143);
-  --chart-3: rgb(255, 72, 56);
+  --chart-3: rgb(244, 66, 110);
   --chart-4: rgb(46, 189, 246);
   --chart-5: rgb(255, 177, 136);
   --sidebar: rgb(255, 255, 255);
@@ -77,7 +77,7 @@
   --muted-foreground: rgb(150, 150, 150);
   --accent: rgb(9, 55, 35);
   --accent-foreground: rgb(254, 254, 254);
-  --destructive: rgb(255, 120, 165);
+  --destructive: rgb(245, 38, 55);
   --destructive-foreground: rgb(255, 255, 255);
   --border: rgb(25, 25, 26);
   --input: rgb(59, 59, 59);
@@ -86,10 +86,10 @@
   --failed: 0 72% 58%;
   --scheduled: 217 91% 60%;
   --smtp: 173 80% 45%;
-  --warning: 38 92% 55%;
+  --warning: 38 92% 55
   --chart-1: rgb(81, 240, 168);
   --chart-2: rgb(158, 255, 161);
-  --chart-3: rgb(255, 183, 207);
+  --chart-3: rgb(243, 58, 79);
   --chart-4: rgb(95, 208, 255);
   --chart-5: rgb(255, 177, 136);
   --sidebar: rgb(10, 10, 10);

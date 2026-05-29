@@ -6,7 +6,11 @@ import { Analytics } from "@vercel/analytics/next";
 
 export const metadata: Metadata = {
   title: "Custom Mail",
-  description: "Production email client for custom SMTP sending"
+  description: "Production email client for custom SMTP sending",
+  icons: {
+    icon: "/main-logo.svg",
+    shortcut: "/main-logo.svg"
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
