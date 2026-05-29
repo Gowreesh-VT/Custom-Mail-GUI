@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
     prisma.user.count({ where: { isActive: { not: false } } }),
     prisma.user.count({ where: { isActive: false } })
   ]);
-  const recent = (await prisma.email.findMany({ orderBy: { sentAt: "desc" }, take: 20, include: { user: { select: { id: true, name: true, email: true } } } })).map(emailRecord);
+  const recent = (await prisma.email.findMany({ orderBy: { sentAt: "desc" }, take: 50, include: { user: { select: { id: true, name: true, email: true } } } })).map(emailRecord);
   const topRows = await prisma.email.groupBy({ by: ["userId"], where: { status: "sent", sentAt: { gte: month } }, _count: { _all: true }, orderBy: { _count: { userId: "desc" } }, take: 5 });
   const users = await prisma.user.findMany({ where: { id: { in: topRows.map((row) => row.userId) } }, select: { id: true, name: true, email: true } });
   const userMap = new Map(users.map((user) => [user.id, user]));

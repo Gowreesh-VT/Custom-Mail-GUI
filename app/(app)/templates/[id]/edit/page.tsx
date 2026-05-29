@@ -10,7 +10,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import beautify from "js-beautify";
-import { ArrowLeft, CheckCircle2, Code2, Eye, Loader2, QrCode, RefreshCw, Save } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Code2, Eye, Loader2, QrCode, RefreshCw, Save, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -107,6 +107,12 @@ export default function TemplateEditPage() {
   const [fullPreview, setFullPreview] = useState(false);
   const [qrDialog, setQrDialog] = useState(false);
   const [qrPlaceholder, setQrPlaceholder] = useState({ name: "qr_code", width: 200, height: 200, alt: "QR Code" });
+  const [trackedLinkDialog, setTrackedLinkDialog] = useState(false);
+  const [trackedLabel, setTrackedLabel] = useState("");
+  const [trackedUrl, setTrackedUrl] = useState("");
+  const [trackedType, setTrackedType] = useState<"button" | "link">("button");
+  const [btnBg, setBtnBg] = useState("#3b82f6");
+  const [btnText, setBtnText] = useState("#ffffff");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [formatting, setFormatting] = useState(false);
@@ -195,6 +201,24 @@ export default function TemplateEditPage() {
     setQrDialog(false);
   }
 
+  function insertTrackedLink() {
+    if (!trackedLabel.trim() || !trackedUrl.trim()) return toast.error("Label and URL are required");
+    const cleanLabel = trackedLabel.trim().replace(/:/g, " ");
+    const cleanUrl = trackedUrl.trim().replace(/}/g, "");
+    const tag = `{{TRACKED_URL:${cleanLabel}:${cleanUrl}}}`;
+
+    let htmlSnippet = "";
+    if (trackedType === "button") {
+      htmlSnippet = `<a href="${tag}" style="display:inline-block;background-color:${btnBg};color:${btnText};padding:10px 20px;text-decoration:none;border-radius:6px;font-weight:600;font-family:sans-serif;margin:4px 0;">${cleanLabel}</a>`;
+    } else {
+      htmlSnippet = `<a href="${tag}">${cleanLabel}</a>`;
+    }
+
+    setBodyHtml((current) => `${current}\n${htmlSnippet}`);
+    setTrackedLinkDialog(false);
+    toast.success("Tracked element added to template");
+  }
+
   function discard() {
     if (!saved) return;
     setName(saved.name || "");
@@ -271,6 +295,7 @@ export default function TemplateEditPage() {
           </Button>
           <Button variant="outline" onClick={refreshFields}><RefreshCw className="h-4 w-4" />Detect Merge Fields</Button>
           <Button variant="outline" onClick={() => setQrDialog(true)}><QrCode className="h-4 w-4" />Insert QR Placeholder</Button>
+          <Button variant="outline" onClick={() => { setTrackedLinkDialog(true); setTrackedLabel(""); setTrackedUrl(""); }}><Link2 className="h-4 w-4" />Insert Tracked Link</Button>
           <Button variant="outline" onClick={formatHtml} disabled={formatting}>
             {formatting ? (<Loader2 className="h-4 w-4 animate-spin" />) : (<Code2 className="h-4 w-4" />)}
             {formatting ? "Formatting..." : "Format HTML"}
@@ -341,6 +366,74 @@ export default function TemplateEditPage() {
             <Label>Alt text<Input value={qrPlaceholder.alt} onChange={(event) => setQrPlaceholder({ ...qrPlaceholder, alt: event.target.value })} /></Label>
             <p className="text-sm text-muted-foreground">Use different names for multiple QRs: qr_ticket, qr_map, etc.</p>
             <Button onClick={insertQrPlaceholder}>Insert Placeholder</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog open={trackedLinkDialog} onOpenChange={setTrackedLinkDialog}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Insert Tracked Link / Button</DialogTitle></DialogHeader>
+          <div className="grid gap-3">
+            <div className="space-y-1">
+              <Label>Type</Label>
+              <div className="flex gap-2">
+                <Button size="sm" type="button" variant={trackedType === "button" ? "secondary" : "outline"} onClick={() => setTrackedType("button")}>Styled Button</Button>
+                <Button size="sm" type="button" variant={trackedType === "link" ? "secondary" : "outline"} onClick={() => setTrackedType("link")}>Text Link</Button>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="t-label">Link Text / Label</Label>
+              <Input id="t-label" value={trackedLabel} onChange={(e) => setTrackedLabel(e.target.value)} placeholder="e.g. Register Now" />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor="t-url">Destination URL</Label>
+              <Input id="t-url" value={trackedUrl} onChange={(e) => setTrackedUrl(e.target.value)} placeholder="e.g. https://myplatform.com/rsvp" />
+            </div>
+            {trackedType === "button" && (
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="t-bg">Background Color</Label>
+                  <div className="flex gap-2">
+                    <Input id="t-bg" type="color" className="w-10 h-9 p-0.5" value={btnBg} onChange={(e) => setBtnBg(e.target.value)} />
+                    <Input className="font-mono text-xs" value={btnBg} onChange={(e) => setBtnBg(e.target.value)} />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="t-text">Text Color</Label>
+                  <div className="flex gap-2">
+                    <Input id="t-text" type="color" className="w-10 h-9 p-0.5" value={btnText} onChange={(e) => setBtnText(e.target.value)} />
+                    <Input className="font-mono text-xs" value={btnText} onChange={(e) => setBtnText(e.target.value)} />
+                  </div>
+                </div>
+              </div>
+            )}
+            <div className="mt-2 rounded-md border p-3 bg-muted/20">
+              <div className="text-[10px] text-muted-foreground uppercase font-bold mb-2">Live Preview</div>
+              <div className="flex justify-center p-2 border border-dashed rounded bg-background">
+                {trackedType === "button" ? (
+                  <span
+                    style={{
+                      display: "inline-block",
+                      backgroundColor: btnBg,
+                      color: btnText,
+                      padding: "8px 16px",
+                      borderRadius: "6px",
+                      fontWeight: "600",
+                      fontSize: "13px",
+                      fontFamily: "sans-serif"
+                    }}
+                  >
+                    {trackedLabel || "Button Preview"}
+                  </span>
+                ) : (
+                  <span className="text-primary hover:underline font-medium text-sm">
+                    {trackedLabel || "Link Preview"}
+                  </span>
+                )}
+              </div>
+            </div>
+            <Button disabled={!trackedLabel || !trackedUrl} onClick={insertTrackedLink}>
+              Insert Tracked Link
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
