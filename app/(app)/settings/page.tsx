@@ -161,8 +161,10 @@ export default function SettingsPage() {
           <div className="space-y-2">
             <PasswordField label="New Password" value={passwords.newPassword} visible={visible.newPassword} error={passwordErrors.newPassword} onToggle={() => setVisible((current) => ({ ...current, newPassword: !current.newPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, newPassword: value }))} />
             <div className="space-y-1">
-              <div className="h-2 overflow-hidden rounded-full bg-muted"><div className={cn("h-full transition-all", strength.color)} style={{ width: strength.width }} /></div>
-              <p className={cn("text-xs", strength.textColor)}>{strength.label}</p>
+              <div className="h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full transition-all" style={{ width: strength.width, backgroundColor: strength.barColor }} />
+              </div>
+              <p className="text-xs" style={{ color: strength.textColor }}>{strength.label}</p>
             </div>
           </div>
           <PasswordField label="Confirm New Password" value={passwords.confirmPassword} visible={visible.confirmPassword} error={passwordErrors.confirmPassword} onToggle={() => setVisible((current) => ({ ...current, confirmPassword: !current.confirmPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, confirmPassword: value }))} />
@@ -228,9 +230,13 @@ function PasswordField({ label, value, visible, error, onToggle, onChange }: { l
 
 function passwordStrength(password: string) {
   const variety = [/[a-z]/, /[A-Z]/, /\d/, /[^a-zA-Z0-9]/].filter((regex) => regex.test(password)).length;
-  if (password.length >= 12 && variety >= 4) return { label: "Strong", width: "100%", color: "bg-sent", textColor: "text-sent" };
-  if (password.length >= 8 && variety >= 2) return { label: "Fair", width: "66%", color: "bg-warning", textColor: "text-warning" };
-  return { label: "Weak", width: password.length ? "33%" : "0%", color: "bg-failed", textColor: "text-failed" };
+  if (password.length >= 12 && variety >= 4) {
+    return { label: "Strong", width: "100%", barColor: "hsl(var(--sent))", textColor: "hsl(var(--sent))" };
+  }
+  if (password.length >= 8 && variety >= 2) {
+    return { label: "Fair", width: "66%", barColor: "hsl(var(--warning))", textColor: "hsl(var(--warning))" };
+  }
+  return { label: "Weak", width: password.length ? "33%" : "0%", barColor: "hsl(var(--failed))", textColor: "hsl(var(--failed))" };
 }
 
 function formatHealthTime(value: string | Date) {

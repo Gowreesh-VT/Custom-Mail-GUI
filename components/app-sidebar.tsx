@@ -61,7 +61,13 @@ function SidebarBody() {
           </Button>
         )}
         <div className="flex items-center justify-between rounded-md border p-3 text-sm">
-          <span className="flex items-center gap-2"><span className={cn("h-2.5 w-2.5 rounded-full", me?.smtpConfigured ? "bg-sent" : "bg-failed")} /> SMTP</span>
+          <span className="flex items-center gap-2">
+            <span
+              className={cn("h-2.5 w-2.5 rounded-full", me?.smtpConfigured ? "bg-sent" : "bg-failed")}
+              style={{ backgroundColor: me?.smtpConfigured ? "hsl(var(--sent))" : "hsl(var(--failed))" }}
+            />
+            SMTP
+          </span>
           <Button variant="ghost" size="icon" onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")} aria-label="Toggle theme">
             {mounted ? resolvedTheme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" /> : <span className="h-4 w-4" />}
           </Button>
