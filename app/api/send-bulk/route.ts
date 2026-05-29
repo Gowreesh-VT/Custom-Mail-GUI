@@ -44,13 +44,15 @@ export async function POST(req: NextRequest) {
   if (!rows.length) return jsonError("CSV must include at least one row with an email column", 400, "CSV_EMPTY");
   await logAudit("email.bulk_started", String(user._id), { recipientCount: rows.length, templateId }, undefined, req);
 
+  const bulkJobId = crypto.randomUUID();
+
   const stream = new ReadableStream({
     async start(controller) {
       let failedQrCount = 0;
       let certificateCount = 0;
       let failedCertificateCount = 0;
       try {
-        controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length })}\n`));
+        controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length, bulkJobId })}\n`));
         for (let index = 0; index < rows.length; index++) {
           if (req.signal.aborted) break;
           const row = rows[index];
@@ -132,6 +134,7 @@ export async function POST(req: NextRequest) {
                 attachments: toJson(attachments.map((attachment) => ({ name: attachment.name, size: attachment.content.length, mimeType: attachment.contentType }))),
                 status: "sent",
                 isBulk: true,
+                bulkJobId,
                 sentAt: new Date(),
                 templateId,
                 templateName: template.name,
@@ -152,6 +155,7 @@ export async function POST(req: NextRequest) {
                 status: "failed",
                 errorMsg: error.message,
                 isBulk: true,
+                bulkJobId,
                 sentAt: new Date(),
                 templateId,
                 templateName: template.name,
@@ -167,7 +171,7 @@ export async function POST(req: NextRequest) {
         if (certTemplate) {
           await logAudit("certificate.bulk_generated", String(user._id), { templateName: certTemplate.name, count: certificateCount, failed: failedCertificateCount }, undefined, req);
         }
-        controller.enqueue(encoder.encode(`${toJson({ type: req.signal.aborted ? "stopped" : "completed", failedQrCount, certificateCount, failedCertificateCount })}\n`));
+        controller.enqueue(encoder.encode(`${toJson({ type: req.signal.aborted ? "stopped" : "completed", bulkJobId, failedQrCount, certificateCount, failedCertificateCount })}\n`));
       } catch (error) {
         console.error("[send-bulk] stream failed:", error);
         controller.enqueue(encoder.encode(`${toJson({ type: "failed", error: error instanceof Error ? error.message : String(error), failedQrCount, certificateCount, failedCertificateCount })}\n`));
