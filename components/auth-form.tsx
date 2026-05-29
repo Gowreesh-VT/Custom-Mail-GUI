@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -43,7 +44,21 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
           <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" name="password" type="password" required minLength={mode === "signup" ? 8 : 1} /></div>
           <Button disabled={loading} className="w-full">{loading ? "Please wait..." : mode === "login" ? "Log in" : "Sign up"}</Button>
         </form>
-        {mode === "signup" && <p className="mt-4 text-center text-sm text-muted-foreground">Signup is disabled. Contact your administrator.</p>}
+        {mode === "signup" ? (
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Already have an account?{" "}
+            <Link href="/login" className="text-primary hover:underline">
+              Log in
+            </Link>
+          </p>
+        ) : (
+          <p className="mt-4 text-center text-sm text-muted-foreground">
+            Don&apos;t have an account?{" "}
+            <Link href="/signup" className="text-primary hover:underline">
+              Sign up
+            </Link>
+          </p>
+        )}
       </CardContent>
     </Card>
   );
