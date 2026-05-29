@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import Image from "next/image";
 import {
   ArrowRight, BarChart3, CheckCircle2, Code, Eye,
   FileSpreadsheet, Layers, Mail, QrCode, Shield,
@@ -63,8 +64,8 @@ export default function LandingPage() {
       <header className="sticky top-0 z-50 border-b border-zinc-900 bg-black/80 backdrop-blur-md transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-xl bg-primary flex items-center justify-center font-bold text-black text-lg shadow-[0_0_20px_rgba(81,240,168,0.3)] hover:rotate-6 transition-transform">
-              M
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary shadow-[0_0_20px_rgba(81,240,168,0.3)] transition-transform hover:rotate-6">
+              <Image src="/main-logo.svg" alt="Postly" width={24} height={24} className="h-6 w-6" />
             </div>
             <span className="font-extrabold text-lg tracking-tight bg-gradient-to-r from-white via-zinc-200 to-zinc-500 bg-clip-text text-transparent">
               Postly
