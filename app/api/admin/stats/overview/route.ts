@@ -26,5 +26,10 @@ export async function GET(req: NextRequest) {
   const users = await prisma.user.findMany({ where: { id: { in: topRows.map((row) => row.userId) } }, select: { id: true, name: true, email: true } });
   const userMap = new Map(users.map((user) => [user.id, user]));
   const top = topRows.map((row) => ({ _id: row.userId, sent: row._count._all, name: userMap.get(row.userId)?.name, email: userMap.get(row.userId)?.email }));
-  return Response.json({ success: true, stats: { totalUsers, activeUsers, inactiveUsers, emailsToday, emailsTotal, failed7, scheduledPending, bulkMonth }, recent, top });
+  const recentUsers = await prisma.user.findMany({
+    orderBy: { createdAt: "desc" },
+    take: 5,
+    select: { id: true, name: true, email: true, createdAt: true }
+  });
+  return Response.json({ success: true, stats: { totalUsers, activeUsers, inactiveUsers, emailsToday, emailsTotal, failed7, scheduledPending, bulkMonth }, recent, top, recentUsers });
 }

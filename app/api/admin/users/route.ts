@@ -9,7 +9,7 @@ import { userRecord } from "@/lib/records";
 
 export const dynamic = "force-dynamic";
 
-const createSchema = z.object({ name: z.string().min(1), email: z.string().email(), password: z.string().min(8), role: z.enum(["admin", "user"]).default("user"), dailyLimit: z.number().default(500), monthlyLimit: z.number().default(10000) });
+const createSchema = z.object({ name: z.string().min(1), email: z.string().email(), password: z.string().min(8), role: z.enum(["admin", "user"]).default("user"), dailyLimit: z.number().default(200), monthlyLimit: z.number().default(2000) });
 
 export async function GET(req: NextRequest) {
   await requireAdmin(req);
