@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const publicRoutes = ["/login", "/signup"];
+const publicRoutes = ["/", "/login", "/signup", "/privacy-policy", "/terms-of-service", "/docs"];
 const publicApi = ["/api/auth/login", "/api/auth/signup", "/api/auth/refresh", "/api/auth/logout"];
 const publicPrefixes = ["/api/track/open/", "/api/track/click/", "/api/cron/", "/api/qr/img", "/api/qr/validate", "/api/qr/operator/auth"];
 const publicStandaloneRoutes = ["/scan"];
