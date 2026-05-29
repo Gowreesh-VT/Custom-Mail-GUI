@@ -90,6 +90,7 @@ model Email {
   status           String                             // "sent" | "failed" | "partial"
   errorMsg         String?
   isBulk           Boolean   @default(false)
+  bulkJobId        String?
   sentAt           DateTime  @default(now())
 
   // Bulk send reference
@@ -111,11 +112,13 @@ model Email {
 
   // Relations
   events           EmailEvent[]
+  clickEvents      ClickEvent[]
 
   @@index([userId])
   @@index([userId, status])
   @@index([userId, sentAt])
   @@index([userId, isBulk])
+  @@index([userId, bulkJobId])
 }
 
 // ---------------------------------------------------------------------------
@@ -460,4 +463,36 @@ model CertificateGeneration {
   @@index([status])
   @@index([createdAt])
   @@index([recipientEmail])
+}
+
+// ---------------------------------------------------------------------------
+// CLICK EVENT
+// ---------------------------------------------------------------------------
+
+model ClickEvent {
+  id        String   @id @default(cuid())
+  emailId   String
+  email     Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  label     String
+  url       String
+  ip        String?
+  userAgent String?
+  timestamp DateTime @default(now())
+
+  @@map("click_events")
+  @@index([emailId])
+  @@index([label])
+  @@index([timestamp])
+}
+
+// ---------------------------------------------------------------------------
+// RETENTION POLICY
+// ---------------------------------------------------------------------------
+
+model RetentionPolicy {
+  id        String   @id @default("singleton")
+  days      Int      @default(30)
+  updatedAt DateTime @updatedAt
+
+  @@map("retention_policy")
 }
