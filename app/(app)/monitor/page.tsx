@@ -18,6 +18,8 @@ export default function MonitorPage() {
   const [stats, setStats] = useState<any[] | null>(null);
   const [chart, setChart] = useState<any[]>([]);
   const [failed, setFailed] = useState<any[]>([]);
+  const [failedPage, setFailedPage] = useState(1);
+  const failedPageSize = 7;
   const [days, setDays] = useState("30");
   const [events, setEvents] = useState<any[]>([]);
   const [paused, setPaused] = useState(false);
@@ -38,12 +40,25 @@ export default function MonitorPage() {
   useEffect(() => { if (!paused) bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [events, paused]);
 
   const lastFailed = useMemo(() => failed[0], [failed]);
+  const failedPageCount = Math.max(1, Math.ceil(failed.length / failedPageSize));
+  const failedStart = (failedPage - 1) * failedPageSize;
+  const failedSlice = failed.slice(failedStart, failedStart + failedPageSize);
+  const failedPages = useMemo(() => Array.from({ length: failedPageCount }, (_, index) => index + 1), [failedPageCount]);
+  useEffect(() => {
+    setFailedPage(1);
+  }, [failed.length]);
   async function retry(id: string) {
     try { await apiFetch(`/api/monitor/retry/${id}`, { method: "POST", body: "{}" }); toast.success("Retry sent"); load(); } catch (error: any) { toast.error(error.message); }
   }
   async function dismiss(id: string) {
     await apiFetch(`/api/monitor/dismiss/${id}`, { method: "POST", body: "{}" });
     toast.success("Dismissed");
+    load();
+  }
+  async function dismissAll() {
+    if (failed.length === 0) return;
+    await Promise.all(failed.map((email) => apiFetch(`/api/monitor/dismiss/${email._id}`, { method: "POST", body: "{}" })));
+    toast.success("All dismissed");
     load();
   }
   return (
@@ -58,7 +73,7 @@ export default function MonitorPage() {
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between"><CardTitle>Send Volume</CardTitle><Tabs value={days} onValueChange={setDays}><TabsList><TabsTrigger value="7">7 days</TabsTrigger><TabsTrigger value="30">30 days</TabsTrigger><TabsTrigger value="90">90 days</TabsTrigger></TabsList></Tabs></CardHeader>
-          <CardContent className="h-80">{mounted ? <ResponsiveContainer width="100%" height="100%"><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><ChartTooltip /><Legend /><Bar dataKey="sent" fill="hsl(var(--sent))" /><Bar dataKey="failed" fill="hsl(var(--failed))" /></BarChart></ResponsiveContainer> : null}</CardContent>
+          <CardContent className="h-80 min-h-[320px] min-w-0">{mounted ? <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={320}><BarChart data={chart}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="date" /><YAxis /><ChartTooltip /><Legend /><Bar dataKey="sent" fill="var(--chart-1)" /><Bar dataKey="failed" fill="var(--chart-3)" /></BarChart></ResponsiveContainer> : null}</CardContent>
         </Card>
         <Card className={lastFailed ? "border-failed/40" : ""}>
           <CardHeader><CardTitle>SMTP Health</CardTitle></CardHeader>
@@ -78,8 +93,45 @@ export default function MonitorPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Failed Emails</CardTitle><Button variant="outline" size="sm" onClick={() => apiFetch("/api/monitor/retry-all", { method: "POST", body: JSON.stringify({ days: 7 }) }).then(() => { toast.success("Retry all started"); load(); })}>Retry All</Button></CardHeader>
-          <CardContent><Table><TableHeader><TableRow><TableHead>Date</TableHead><TableHead>To</TableHead><TableHead>Subject</TableHead><TableHead>Actions</TableHead></TableRow></TableHeader><TableBody>{failed.map((email) => <TableRow key={email._id}><TableCell>{new Date(email.sentAt).toLocaleDateString()}</TableCell><TableCell>{email.to?.join(", ")}</TableCell><TableCell>{email.subject}</TableCell><TableCell className="space-x-2"><Button size="sm" variant="outline" onClick={() => retry(email._id)}>Retry</Button><Button size="sm" variant="ghost" onClick={() => dismiss(email._id)}>Dismiss</Button></TableCell></TableRow>)}</TableBody></Table></CardContent>
+          <CardHeader className="flex flex-row items-center justify-between"><CardTitle className="flex items-center gap-2"><AlertTriangle className="h-4 w-4" />Failed Emails</CardTitle><div className="flex items-center gap-2"><Button variant="outline" size="sm" onClick={() => apiFetch("/api/monitor/retry-all", { method: "POST", body: JSON.stringify({ days: 7 }) }).then(() => { toast.success("Retry all started"); load(); })}>Retry All</Button><Button variant="ghost" size="sm" onClick={dismissAll} disabled={failed.length === 0}>Dismiss All</Button></div></CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Date</TableHead>
+                  <TableHead>To</TableHead>
+                  <TableHead>Subject</TableHead>
+                  <TableHead>Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {failedSlice.map((email) => (
+                  <TableRow key={email._id}>
+                    <TableCell>{new Date(email.sentAt).toLocaleDateString()}</TableCell>
+                    <TableCell>{email.to?.join(", ")}</TableCell>
+                    <TableCell>{email.subject}</TableCell>
+                    <TableCell className="space-x-2">
+                      <Button size="sm" variant="outline" onClick={() => retry(email._id)}>Retry</Button>
+                      <Button size="sm" variant="ghost" onClick={() => dismiss(email._id)}>Dismiss</Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+                {failedSlice.length === 0 && (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center text-sm text-muted-foreground">No failed emails.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+              <div className="text-xs text-muted-foreground">Showing {failed.length === 0 ? 0 : failedStart + 1}-{Math.min(failedStart + failedPageSize, failed.length)} of {failed.length}</div>
+              <div className="flex flex-wrap gap-2">
+                {failedPages.map((page) => (
+                  <Button key={page} size="sm" variant={page === failedPage ? "default" : "outline"} onClick={() => setFailedPage(page)}>{page}</Button>
+                ))}
+              </div>
+            </div>
+          </CardContent>
         </Card>
       </div>
     </div>
