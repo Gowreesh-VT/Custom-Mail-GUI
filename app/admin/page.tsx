@@ -42,7 +42,7 @@ export default function AdminOverviewPage() {
         <Card className="xl:col-span-2"><CardHeader><CardTitle>User Activity</CardTitle></CardHeader><CardContent className="h-80">{mounted ? <ResponsiveContainer width="100%" height="100%"><BarChart data={chart?.byUser || []}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="name" /><YAxis /><Tooltip /><Legend /><Bar dataKey="sent" fill="hsl(var(--sent))" /><Bar dataKey="failed" fill="hsl(var(--failed))" /></BarChart></ResponsiveContainer> : null}</CardContent></Card>
         <Card><CardHeader><CardTitle>Status Breakdown</CardTitle></CardHeader><CardContent className="h-80">{mounted ? <ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={(chart?.status || []).map((s: any) => ({ name: s._id, value: s.value }))} dataKey="value" nameKey="name" innerRadius={70}>{(chart?.status || []).map((_: any, i: number) => <Cell key={i} fill={["hsl(var(--sent))", "hsl(var(--failed))", "hsl(var(--scheduled))"][i % 3]} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer> : null}</CardContent></Card>
       </div>
-      <div className="grid gap-5 xl:grid-cols-2">
+      <div className="grid gap-5 xl:grid-cols-3">
         <Card><CardHeader><CardTitle>Top Senders</CardTitle></CardHeader><CardContent className="space-y-3">{(overview?.top || []).map((user: any, i: number) => <div key={user.email} className="flex items-center justify-between rounded-md border p-3"><span>{i + 1}. {user.name}<br /><span className="text-sm text-muted-foreground">{user.email}</span></span><Badge variant="sent">{user.sent} sent</Badge></div>)}</CardContent></Card>
         <Card>
           <CardHeader>
@@ -82,6 +82,34 @@ export default function AdminOverviewPage() {
                   );
                 })}
               </div>
+            )}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>Newly Joined Users</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {(overview?.recentUsers || []).map((user: any) => (
+              <div key={user.id} className="rounded-md border p-3 text-sm flex items-center justify-between">
+                <div>
+                  <Badge variant="outline" className="border-emerald-500/30 text-emerald-400 bg-emerald-500/5">
+                    New User Joined
+                  </Badge>
+                  <p className="text-zinc-300 mt-1 font-medium">
+                    {user.name} <span className="text-xs text-muted-foreground">({user.email})</span>
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    registered on the platform
+                  </p>
+                </div>
+                <span className="text-xs text-muted-foreground whitespace-nowrap ml-2">
+                  {new Date(user.createdAt).toLocaleDateString()}
+                </span>
+              </div>
+            ))}
+            {(overview?.recentUsers || []).length === 0 && (
+              <div className="text-center py-6 text-sm text-muted-foreground">No recent registrations</div>
             )}
           </CardContent>
         </Card>

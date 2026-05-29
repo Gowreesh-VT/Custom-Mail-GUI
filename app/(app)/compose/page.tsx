@@ -216,7 +216,29 @@ export default function ComposePage() {
       ) : quickStats ? (
         <Card><CardContent className="grid gap-4 p-4 md:grid-cols-4"><QuickStat label="Sent today" value={quickStats.sentToday} limit={quickStats.dailyLimit} /><QuickStat label="Sent this month" value={quickStats.sentThisMonth} limit={quickStats.monthlyLimit} /><QuickStat label="Scheduled" value={quickStats.scheduled} /><QuickStat label="Drafts" value={quickStats.drafts} /></CardContent></Card>
       ) : null}
-      {dailyHit && <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm">You&apos;ve reached your daily sending limit ({quickStats.dailyLimit} emails). Your limit resets at midnight.</div>}
+      {quickStats && (
+        (() => {
+          const isDailyReached = quickStats.dailyLimit > 0 && quickStats.sentToday >= quickStats.dailyLimit;
+          const isMonthlyReached = quickStats.monthlyLimit > 0 && quickStats.sentThisMonth >= quickStats.monthlyLimit;
+          const isDailyNear = quickStats.dailyLimit > 0 && !isDailyReached && quickStats.sentToday >= quickStats.dailyLimit * 0.9;
+          const isMonthlyNear = quickStats.monthlyLimit > 0 && !isMonthlyReached && quickStats.sentThisMonth >= quickStats.monthlyLimit * 0.9;
+
+          if (isDailyReached || isMonthlyReached) {
+            return (
+              <div className="rounded-md border border-failed/30 bg-failed/10 p-3 text-sm text-failed">
+                <span className="font-bold">Limit Reached:</span> Your email sending limit is completed or limit reached. Please contact your administrator.
+              </div>
+            );
+          } else if (isDailyNear || isMonthlyNear) {
+            return (
+              <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">
+                <span className="font-bold">Limit Warning:</span> You are near your email sending limit. Please contact your administrator.
+              </div>
+            );
+          }
+          return null;
+        })()
+      )}
       <div className="grid gap-5 xl:grid-cols-[1fr_360px]">
         <Card>
           <CardHeader>
