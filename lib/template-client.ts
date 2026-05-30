@@ -25,26 +25,26 @@ export function validateHtmlTemplateClient(bodyHtml: string) {
 }
 
 export async function generateTemplateThumbnail(bodyHtml: string) {
-  let frame: HTMLIFrameElement | null = null;
+  let container: HTMLDivElement | null = null;
   try {
+    container = document.createElement("div");
+    container.style.position = "fixed";
+    container.style.left = "-10000px";
+    container.style.top = "0";
+    container.style.width = "640px";
+    container.style.height = "400px";
+    container.style.background = "white";
+    container.style.overflow = "hidden";
+    container.innerHTML = replaceQrPlaceholdersForPreview(bodyHtml);
+    document.body.appendChild(container);
+
+    const activeContainer = container;
+
     const generatePromise = (async () => {
-      frame = document.createElement("iframe");
-      frame.setAttribute("sandbox", "allow-same-origin");
-      frame.style.position = "fixed";
-      frame.style.left = "-10000px";
-      frame.style.top = "0";
-      frame.style.width = "640px";
-      frame.style.height = "400px";
-      frame.style.background = "white";
-      document.body.appendChild(frame);
-      frame.srcdoc = replaceQrPlaceholdersForPreview(bodyHtml);
-      await new Promise((resolve) => {
-        if (frame) frame.onload = resolve;
-        setTimeout(resolve, 1200);
-      });
-      const doc = frame.contentDocument;
-      if (!doc?.documentElement) throw new Error("Preview frame unavailable");
-      const canvas = await html2canvas(doc.documentElement, {
+      // Give a small delay for DOM parsing and resource pre-loading
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      const canvas = await html2canvas(activeContainer, {
         useCORS: true,
         allowTaint: false,
         backgroundColor: "#ffffff",
@@ -61,13 +61,13 @@ export async function generateTemplateThumbnail(bodyHtml: string) {
     );
 
     const result = await Promise.race([generatePromise, timeoutPromise]);
-    if (frame) frame.remove();
+    activeContainer.remove();
     return result;
   } catch (error) {
     console.error("Thumbnail generation failed or timed out:", error);
-    if (frame) {
+    if (container) {
       try {
-        frame.remove();
+        container.remove();
       } catch {}
     }
     return TEMPLATE_THUMBNAIL_PLACEHOLDER;
