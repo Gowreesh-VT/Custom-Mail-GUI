@@ -125,9 +125,9 @@ export async function createMailerTransporter(userId: string) {
   return createTransporter(user);
 }
 
-export async function sendMailForUser(user: UserWithSmtp, payload: SendPayload) {
+export async function sendMailForUser(user: UserWithSmtp, payload: SendPayload, existingTransporter?: any) {
   const config = await getEffectiveSmtpConfig(user);
-  const transporter = createTransporterFromConfig(config);
+  const transporter = existingTransporter || createTransporterFromConfig(config);
   const userId = String(user.id || user._id || "");
   const attachments = payload.attachments ? await normalizeAttachments(userId, payload.attachments) : undefined;
   const options: Mail.Options = {

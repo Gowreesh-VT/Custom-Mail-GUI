@@ -70,8 +70,8 @@ export default function BulkPage() {
   const [validationLoading, setValidationLoading] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [validationReport, setValidationReport] = useState<any>(null);
-  const [checkSentGlobally, setCheckSentGlobally] = useState(true);
-  const [checkSentHistory, setCheckSentHistory] = useState(true);
+  const [checkSentGlobally, setCheckSentGlobally] = useState(false);
+  const [checkSentHistory, setCheckSentHistory] = useState(false);
 
   useEffect(() => {
     let ignore = false;
@@ -768,14 +768,9 @@ export default function BulkPage() {
                     <p className="text-[10px] text-muted-foreground">Adding a delay helps avoid hitting rate limits or spam filters.</p>
                   </div>
 
-                  <div className="flex gap-2">
-                    <Button className="flex-1" disabled={!canSend || sending || validationLoading} onClick={runPreSendValidation}>
-                      {sending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending...
-                        </>
-                      ) : validationLoading ? (
+                  <div className="flex flex-col gap-2">
+                    <Button className="w-full" disabled={!canSend || sending || validationLoading} onClick={runPreSendValidation}>
+                      {validationLoading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                           Validating CSV...
@@ -783,7 +778,20 @@ export default function BulkPage() {
                       ) : (
                         <>
                           <Play className="mr-2 h-4 w-4" />
-                          Start Sending ({validRecipients})
+                          Verify & Send ({validRecipients})
+                        </>
+                      )}
+                    </Button>
+                    <Button variant="outline" className="w-full border-primary/30 hover:bg-primary/5 text-primary" disabled={!canSend || sending} onClick={() => sendBulk(true)}>
+                      {sending ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Sending...
+                        </>
+                      ) : (
+                        <>
+                          <Play className="mr-2 h-4 w-4" />
+                          Send Direct (Skip Check)
                         </>
                       )}
                     </Button>

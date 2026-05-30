@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { sendMailForUser } from "@/lib/mailer";
+import { sendMailForUser, createMailerTransporter } from "@/lib/mailer";
 import { applyMergeFields, jsonError } from "@/lib/utils";
 import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
       let certificateCount = 0;
       let failedCertificateCount = 0;
       try {
+        const transporter = await createMailerTransporter(String(user._id));
         controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length, bulkJobId })}\n`));
         for (let index = 0; index < rows.length; index++) {
           if (req.signal.aborted) break;
@@ -141,7 +142,7 @@ export async function POST(req: NextRequest) {
                 mergeData: toJson(values)
               }
             });
-            await sendMailForUser(user, { ...payload, bodyHtml: injectTracking(payload.bodyHtml, email.id, true) });
+            await sendMailForUser(user, { ...payload, bodyHtml: injectTracking(payload.bodyHtml, email.id, true) }, transporter);
             await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, isBulk: true }, email.id, req);
             controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email, failedQrCount, certificateCount, failedCertificateCount })}\n`));
           } catch (error: any) {

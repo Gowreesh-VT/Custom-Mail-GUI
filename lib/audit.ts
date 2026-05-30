@@ -45,6 +45,12 @@ export async function logAudit(
         : null
     ]);
 
+    const targetUserExists = !!target;
+    const metadata = {
+      ...(params.metadata || {}),
+      ...(!targetUserExists && params.targetId ? { targetRefId: params.targetId } : {})
+    };
+
     const actionRoot = params.action.split(".")[0];
     await prisma.auditLog.create({
       data: {
@@ -52,9 +58,9 @@ export async function logAudit(
         category: params.category ?? CATEGORY[actionRoot] ?? "ADMIN",
         userId: params.userId ?? "",
         userName: params.userName ?? (actor ? `${actor.name} <${actor.email}>` : ""),
-        targetId: params.targetId ?? null,
+        targetId: targetUserExists ? params.targetId : null,
         targetName: params.targetName ?? (target ? `${target.name} <${target.email}>` : null),
-        metadata: params.metadata ? toJson(params.metadata) : null,
+        metadata: Object.keys(metadata).length > 0 ? toJson(metadata) : null,
         ip:
           params.req?.headers.get("x-forwarded-for")?.split(",")[0] ??
           params.req?.headers.get("x-real-ip") ??
