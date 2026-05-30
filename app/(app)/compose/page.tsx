@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { Eye, Loader2, Paperclip, Save, Send, Clock, Layers, Star } from "lucide-react";
-import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { RichEditor } from "@/components/rich-editor";
 import { TagInput } from "@/components/tag-input";
@@ -333,7 +332,7 @@ export default function ComposePage() {
           )}
           <Card>
             <CardHeader><CardTitle className="flex items-center gap-2"><Eye className="h-4 w-4" />Preview</CardTitle></CardHeader>
-            <CardContent><div className="rounded-md border bg-background p-4 text-sm" dangerouslySetInnerHTML={{ __html: typeof window !== "undefined" ? DOMPurify.sanitize(previewHtml) : previewHtml }} /></CardContent>
+            <CardContent><div className="rounded-md border bg-background p-4 text-sm" dangerouslySetInnerHTML={{ __html: previewHtml }} /></CardContent>
           </Card>
           <Card>
             <CardHeader><CardTitle>Load Template</CardTitle></CardHeader>

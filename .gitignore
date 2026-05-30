@@ -44,7 +44,3 @@ uploads/
 next-env.d.ts
 
 /lib/generated/prisma
-
-# Logs and CSV files
-*.log
-*.csv
