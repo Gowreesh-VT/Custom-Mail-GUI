@@ -4,20 +4,14 @@ import { prisma } from "@/lib/prisma";
 import { decodeQrData } from "@/lib/qr";
 import { jsonSuccess, parseDisplayFields, requestMeta } from "@/lib/qr-api";
 import { jsonError } from "@/lib/utils";
-import { clearRateLimit, getRequestIp, rateLimitAttempt } from "@/lib/security";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const operatorId = String(body.operatorId || "");
-  const rateKey = `qr-validate:${getRequestIp(req)}:${operatorId}`;
-  const limiter = rateLimitAttempt(rateKey, 5, 15 * 60 * 1000);
-  if (!limiter.allowed) return jsonError("Too many PIN attempts. Try again later.", 429, "RATE_LIMITED");
-  const operator = await prisma.qrOperator.findUnique({ where: { id: operatorId } });
+  const operator = await prisma.qrOperator.findUnique({ where: { id: String(body.operatorId || "") } });
   if (!operator || !(await bcrypt.compare(String(body.operatorPin || ""), operator.pinHash))) {
     return jsonError("Invalid PIN", 401);
   }
   if (!operator.isActive) return jsonError("Operator account is deactivated", 403);
-  clearRateLimit(rateKey);
 
   const decoded = decodeQrData(String(body.encodedData || ""));
   if (!decoded.isSystemQr) return Response.json({ success: true, result: "invalid", message: "Unknown QR format" });

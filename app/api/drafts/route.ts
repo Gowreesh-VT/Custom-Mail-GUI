@@ -5,7 +5,6 @@ import { jsonError } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { toJson } from "@/lib/json-fields";
 import { draftRecord } from "@/lib/records";
-import { normalizeUploadedAttachmentRecords } from "@/lib/security";
 
 export const dynamic = "force-dynamic";
 
@@ -27,28 +26,23 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
-  try {
-    const { user } = await requireUser(req);
-    const body = schema.parse(await req.json());
-    const attachments = await normalizeUploadedAttachmentRecords(String(user._id), body.attachments);
-    const data = {
-      userId: String(user._id),
-      toAddresses: toJson(body.to),
-      ccAddresses: toJson(body.cc),
-      bccAddresses: toJson(body.bcc),
-      replyTo: body.replyTo ?? null,
-      subject: body.subject,
-      bodyHtml: body.bodyHtml,
-      attachments: toJson(attachments)
-    };
-    const draft = body.id
-      ? await prisma.draft.updateMany({ where: { id: body.id, userId: String(user._id) }, data }).then(async (result) => result.count ? prisma.draft.findUnique({ where: { id: body.id } }) : null)
-      : await prisma.draft.create({ data });
-    if (!draft) return jsonError("Draft not found", 404);
-    return Response.json({ success: true, draft: draftRecord(draft) });
-  } catch (error: any) {
-    return jsonError(error.message || "Unable to save draft", 400);
-  }
+  const { user } = await requireUser(req);
+  const body = schema.parse(await req.json());
+  const data = {
+    userId: String(user._id),
+    toAddresses: toJson(body.to),
+    ccAddresses: toJson(body.cc),
+    bccAddresses: toJson(body.bcc),
+    replyTo: body.replyTo ?? null,
+    subject: body.subject,
+    bodyHtml: body.bodyHtml,
+    attachments: toJson(body.attachments)
+  };
+  const draft = body.id
+    ? await prisma.draft.updateMany({ where: { id: body.id, userId: String(user._id) }, data }).then(async (result) => result.count ? prisma.draft.findUnique({ where: { id: body.id } }) : null)
+    : await prisma.draft.create({ data });
+  if (!draft) return jsonError("Draft not found", 404);
+  return Response.json({ success: true, draft: draftRecord(draft) });
 }
 
 export async function PUT(req: NextRequest) {
