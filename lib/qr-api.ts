@@ -2,7 +2,7 @@ import type { NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fromJson, toJson } from "@/lib/json-fields";
 import { jsonError } from "@/lib/utils";
-import { createQrRecord, encodeCheckinData, encodeTextData, encodeUrlData, PENDING_QR_ID, replaceMergeFields, type QrFields } from "@/lib/qr";
+import { createQrRecord, encodeCheckinData, encodeTextData, encodeUrlData, isSafeRemoteLogoUrl, PENDING_QR_ID, replaceMergeFields, type QrFields } from "@/lib/qr";
 
 export const QR_TYPES = ["checkin", "url", "text"] as const;
 export const QR_SCAN_MODES = ["once", "unlimited"] as const;
@@ -41,7 +41,7 @@ export function validateCampaignInput(body: any, partial = false) {
   if (!partial && !body.name) errors.push("Campaign name is required");
   if (body.type && !QR_TYPES.includes(body.type)) errors.push("Invalid QR type");
   if (body.scanMode && !QR_SCAN_MODES.includes(body.scanMode)) errors.push("Invalid scan mode");
-  if (body.logoUrl && !String(body.logoUrl).startsWith("https://")) errors.push("Logo URL must start with https://");
+  if (body.logoUrl && !isSafeRemoteLogoUrl(String(body.logoUrl))) errors.push("Logo URL must be a safe public https URL");
   if (errors.length) return errors[0];
   return null;
 }
