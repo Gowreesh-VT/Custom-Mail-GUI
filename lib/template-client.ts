@@ -25,35 +25,51 @@ export function validateHtmlTemplateClient(bodyHtml: string) {
 }
 
 export async function generateTemplateThumbnail(bodyHtml: string) {
+  let frame: HTMLIFrameElement | null = null;
   try {
-    const frame = document.createElement("iframe");
-    frame.setAttribute("sandbox", "allow-same-origin");
-    frame.style.position = "fixed";
-    frame.style.left = "-10000px";
-    frame.style.top = "0";
-    frame.style.width = "640px";
-    frame.style.height = "400px";
-    frame.style.background = "white";
-    document.body.appendChild(frame);
-    frame.srcdoc = replaceQrPlaceholdersForPreview(bodyHtml);
-    await new Promise((resolve) => {
-      frame.onload = resolve;
-      setTimeout(resolve, 1200);
-    });
-    const doc = frame.contentDocument;
-    if (!doc?.documentElement) throw new Error("Preview frame unavailable");
-    const canvas = await html2canvas(doc.documentElement, {
-      useCORS: true,
-      allowTaint: false,
-      backgroundColor: "#ffffff",
-      width: 640,
-      height: 400,
-      windowWidth: 640,
-      windowHeight: 400
-    });
-    frame.remove();
-    return canvas.toDataURL("image/png");
-  } catch {
+    const generatePromise = (async () => {
+      frame = document.createElement("iframe");
+      frame.setAttribute("sandbox", "allow-same-origin");
+      frame.style.position = "fixed";
+      frame.style.left = "-10000px";
+      frame.style.top = "0";
+      frame.style.width = "640px";
+      frame.style.height = "400px";
+      frame.style.background = "white";
+      document.body.appendChild(frame);
+      frame.srcdoc = replaceQrPlaceholdersForPreview(bodyHtml);
+      await new Promise((resolve) => {
+        if (frame) frame.onload = resolve;
+        setTimeout(resolve, 1200);
+      });
+      const doc = frame.contentDocument;
+      if (!doc?.documentElement) throw new Error("Preview frame unavailable");
+      const canvas = await html2canvas(doc.documentElement, {
+        useCORS: true,
+        allowTaint: false,
+        backgroundColor: "#ffffff",
+        width: 640,
+        height: 400,
+        windowWidth: 640,
+        windowHeight: 400
+      });
+      return canvas.toDataURL("image/png");
+    })();
+
+    const timeoutPromise = new Promise<string>((_, reject) =>
+      setTimeout(() => reject(new Error("Thumbnail generation timed out")), 4000)
+    );
+
+    const result = await Promise.race([generatePromise, timeoutPromise]);
+    if (frame) frame.remove();
+    return result;
+  } catch (error) {
+    console.error("Thumbnail generation failed or timed out:", error);
+    if (frame) {
+      try {
+        frame.remove();
+      } catch {}
+    }
     return TEMPLATE_THUMBNAIL_PLACEHOLDER;
   }
 }
