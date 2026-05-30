@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendMailForUser } from "@/lib/mailer";
@@ -19,9 +20,18 @@ export async function POST(req: NextRequest) {
 
 async function processScheduled(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
-  const token = authHeader?.replace("Bearer ", "");
-  if (token !== process.env.CRON_SECRET) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  const token = authHeader?.replace("Bearer ", "") || "";
+  const secret = process.env.CRON_SECRET || "";
+
+  if (!token || !secret) {
+    return new Response(null, { status: 401 });
+  }
+
+  const tokenHash = crypto.createHash("sha256").update(token).digest();
+  const secretHash = crypto.createHash("sha256").update(secret).digest();
+
+  if (!crypto.timingSafeEqual(tokenHash, secretHash)) {
+    return new Response(null, { status: 401 });
   }
 
   const now = new Date();

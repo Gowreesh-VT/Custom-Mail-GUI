@@ -4,12 +4,19 @@ import { prisma } from "@/lib/prisma";
 import { signToken } from "@/lib/jwt";
 import { cookieOptions } from "@/lib/auth";
 import { jsonError } from "@/lib/utils";
+import { clearRateLimit, getRequestIp, rateLimitAttempt } from "@/lib/security";
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const email = String(body.email || "").toLowerCase().trim();
     const pin = String(body.pin || "").trim();
+    const ip = getRequestIp(req);
+    const rateKey = `operator-login:${ip}:${email}`;
+    const limiter = rateLimitAttempt(rateKey, 5, 15 * 60 * 1000);
+    if (!limiter.allowed) {
+      return jsonError("Too many PIN attempts. Try again later.", 429, "RATE_LIMITED");
+    }
 
     if (!email || !pin) {
       return jsonError("Email and PIN are required", 400);
@@ -55,6 +62,7 @@ export async function POST(req: NextRequest) {
 
     // Set operator cookie
     res.cookies.set("operatorToken", signToken(payload, "access"), cookieOptions(7 * 24 * 60 * 60)); // 7 days
+    clearRateLimit(rateKey);
     
     return res;
   } catch (error: any) {
