@@ -9,7 +9,6 @@ import { prisma } from "@/lib/prisma";
 import { toJson } from "@/lib/json-fields";
 import { createQrForBody, objectToStrings } from "@/lib/qr-api";
 import { detectQrPlaceholders, getQrImageUrl, replaceMergeFields } from "@/lib/qr";
-import { normalizeUploadedAttachmentRecords } from "@/lib/security";
 
 const schema = z.object({
   to: z.union([z.string(), z.array(z.string())]),
@@ -38,23 +37,20 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
-  let user: any;
-  let payload: any;
+  const { user } = await requireUser(req);
+  const body = schema.parse(await req.json());
+  const payload = {
+    to: parseList(body.to),
+    cc: parseList(body.cc),
+    bcc: parseList(body.bcc),
+    replyTo: body.replyTo,
+    subject: body.subject,
+    bodyHtml: body.bodyHtml,
+    trackingEnabled: body.trackingEnabled,
+    attachments: body.attachments || []
+  };
+  const qrPlaceholders = detectQrPlaceholders(payload.bodyHtml);
   try {
-    ({ user } = await requireUser(req));
-    const body = schema.parse(await req.json());
-    const attachments = await normalizeUploadedAttachmentRecords(String(user._id), body.attachments || []);
-    payload = {
-      to: parseList(body.to),
-      cc: parseList(body.cc),
-      bcc: parseList(body.bcc),
-      replyTo: body.replyTo,
-      subject: body.subject,
-      bodyHtml: body.bodyHtml,
-      trackingEnabled: body.trackingEnabled,
-      attachments
-    };
-    const qrPlaceholders = detectQrPlaceholders(payload.bodyHtml);
     if (qrPlaceholders.length) {
       payload.bodyHtml = await renderSingleQrHtml(payload.bodyHtml, body.qrConfig || {}, String(user._id), payload.to, payload.cc, payload.bcc);
     }
@@ -82,9 +78,6 @@ export async function POST(req: NextRequest) {
     await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject }, email.id, req);
     return Response.json({ success: true, messageId: result.messageId, emailId: email.id });
   } catch (error: any) {
-    if (!user || !payload) {
-      return jsonError(error.message || "Send failed", 400, "SEND_FAILED");
-    }
     const email = await prisma.email.create({
       data: {
         userId: String(user._id),

@@ -106,10 +106,9 @@ export async function applyQrStyling(
   const width = metadata.width || 400;
   const composites: sharp.OverlayOptions[] = [];
 
-  const logoUrl = campaign.logoUrl;
-  if (logoUrl && isSafeRemoteLogoUrl(logoUrl)) {
+  if (campaign.logoUrl?.startsWith("https://")) {
     try {
-      const logoResponse = await fetch(logoUrl);
+      const logoResponse = await fetch(campaign.logoUrl);
       if (logoResponse.ok) {
         const logoSize = Math.round(width * 0.2);
         const padding = Math.round(logoSize * 0.14);
@@ -158,23 +157,6 @@ export async function applyQrStyling(
   }
 
   return output;
-}
-
-export function isSafeRemoteLogoUrl(value?: string | null) {
-  if (!value) return false;
-  try {
-    const url = new URL(value);
-    if (url.protocol !== "https:") return false;
-    if (url.username || url.password) return false;
-    const host = url.hostname.toLowerCase();
-    if (host === "localhost" || host === "127.0.0.1" || host === "::1" || host.endsWith(".local")) return false;
-    if (/^(10|127)\./.test(host)) return false;
-    if (/^192\.168\./.test(host)) return false;
-    if (/^172\.(1[6-9]|2\d|3[0-1])\./.test(host)) return false;
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 async function placeholder(text: string, color: string) {

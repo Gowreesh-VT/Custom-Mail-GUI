@@ -1,10 +1,7 @@
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
-import { access } from "fs/promises";
-import path from "path";
 import { prisma } from "@/lib/prisma";
 import { decryptText } from "@/lib/encrypt";
-import { resolveUserAttachmentPath } from "@/lib/security";
 
 export interface SendPayload {
   to: string[];
@@ -28,8 +25,7 @@ type SmtpConfig = {
 };
 
 type UserWithSmtp = {
-  id?: string;
-  _id?: string;
+  id: string;
   smtpHost?: string | null;
   smtpPort?: number | null;
   smtpUsername?: string | null;
@@ -128,8 +124,6 @@ export async function createMailerTransporter(userId: string) {
 export async function sendMailForUser(user: UserWithSmtp, payload: SendPayload) {
   const config = await getEffectiveSmtpConfig(user);
   const transporter = createTransporterFromConfig(config);
-  const userId = String(user.id || user._id || "");
-  const attachments = payload.attachments ? await normalizeAttachments(userId, payload.attachments) : undefined;
   const options: Mail.Options = {
     from: `"${config.fromName || config.fromEmail}" <${config.fromEmail}>`,
     to: payload.to,
@@ -138,7 +132,7 @@ export async function sendMailForUser(user: UserWithSmtp, payload: SendPayload) 
     replyTo: payload.replyTo,
     subject: payload.subject,
     html: payload.bodyHtml,
-    attachments: attachments?.map((attachment) => ({
+    attachments: payload.attachments?.map((attachment) => ({
       filename: attachment.name,
       path: attachment.path,
       content: attachment.content,
@@ -146,30 +140,4 @@ export async function sendMailForUser(user: UserWithSmtp, payload: SendPayload) 
     }))
   };
   return transporter.sendMail(options);
-}
-
-export async function normalizeAttachments(userId: string, attachments: SendPayload["attachments"]) {
-  const normalized: NonNullable<SendPayload["attachments"]> = [];
-  for (const attachment of attachments || []) {
-    const filename = attachment.name ? path.basename(attachment.name) : undefined;
-    if (attachment.content) {
-      normalized.push({
-        name: filename,
-        content: attachment.content,
-        contentType: attachment.contentType
-      });
-      continue;
-    }
-    if (!attachment.path) {
-      throw new Error("Invalid attachment payload");
-    }
-    const resolvedPath = resolveUserAttachmentPath(userId, attachment.path);
-    await access(resolvedPath);
-    normalized.push({
-      name: filename,
-      path: resolvedPath,
-      contentType: attachment.contentType
-    });
-  }
-  return normalized;
 }
