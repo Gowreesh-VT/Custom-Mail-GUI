@@ -2,7 +2,7 @@ const CACHE_NAME = "operator-cache-v1";
 const ASSETS = [
   "/operator",
   "/favicon.ico",
-  "/manifest.json"
+  "/manifest-scan.json"
 ];
 
 // Install Event

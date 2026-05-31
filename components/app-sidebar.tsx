@@ -89,8 +89,8 @@ function SidebarBody() {
 export function AppSidebar() {
   return (
     <>
-      <aside className="hidden h-screen w-64 shrink-0 border-r bg-card p-4 lg:block sticky top-0"><SidebarBody /></aside>
-      <div className="sticky top-0 z-30 flex items-center gap-3 border-b bg-background/95 p-3 backdrop-blur lg:hidden">
+      <aside className="hidden h-screen w-64 shrink-0 border-r bg-card p-4 md:block sticky top-0"><SidebarBody /></aside>
+      <div className="sticky top-0 z-30 flex items-center gap-3 border-b bg-background/95 p-3 backdrop-blur md:hidden">
         <Sheet>
           <SheetTrigger asChild><Button variant="outline" size="icon"><Menu className="h-4 w-4" /></Button></SheetTrigger>
           <SheetContent side="left"><SheetHeader><SheetTitle>Navigation</SheetTitle></SheetHeader><div className="mt-6 h-[calc(100%-4rem)]"><SidebarBody /></div></SheetContent>

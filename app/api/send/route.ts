@@ -10,6 +10,7 @@ import { toJson } from "@/lib/json-fields";
 import { createQrForBody, objectToStrings } from "@/lib/qr-api";
 import { detectQrPlaceholders, getQrImageUrl, replaceMergeFields } from "@/lib/qr";
 import { normalizeUploadedAttachmentRecords } from "@/lib/security";
+import { sendPushToUser } from "@/lib/push";
 
 const schema = z.object({
   to: z.union([z.string(), z.array(z.string())]),
@@ -97,6 +98,15 @@ export async function POST(req: NextRequest) {
         data: { status: "sent", usedFallbackSmtp: result.usedFallback }
       });
       await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, usedFallback: result.usedFallback }, email.id, req);
+      
+      // Async push notification trigger
+      sendPushToUser(String(user._id), {
+        title: "Email Sent ✅",
+        body: `To: ${payload.to.join(", ")} — "${payload.subject}"`,
+        url: "/sent",
+        tag: "email-sent"
+      }).catch(err => console.error("Error sending email-sent push:", err));
+
       return Response.json({ success: true, messageId: result.messageId, emailId: email.id });
     } else {
       await prisma.email.update({
@@ -104,6 +114,16 @@ export async function POST(req: NextRequest) {
         data: { status: "failed", errorMsg: result.error, usedFallbackSmtp: result.usedFallback }
       });
       await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: result.error, usedFallback: result.usedFallback }, email.id, req);
+
+      // Async push notification trigger
+      const errorShort = result.error ? (result.error.length > 80 ? result.error.slice(0, 80) + "..." : result.error) : "Unknown error";
+      sendPushToUser(String(user._id), {
+        title: "Email Failed ❌",
+        body: `Failed to send to ${payload.to.join(", ")}: ${errorShort}`,
+        url: "/monitor",
+        tag: "email-failed"
+      }).catch(err => console.error("Error sending email-failed push:", err));
+
       return jsonError(`Send failed: ${result.error}`, 400, "SEND_FAILED");
     }
   } catch (error: any) {

@@ -26,6 +26,7 @@ const eslintConfig = defineConfig([
     "templateManager.ts",
     "test-smtp.js",
     "diag-*.js",
+    "public/*.js",
   ]),
 ]);
 

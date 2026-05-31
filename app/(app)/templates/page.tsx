@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Copy, Eye, FileCode, Loader2, Pencil, Plus, Search, Star, Trash2, Upload } from "lucide-react";
+import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,6 +70,17 @@ export default function TemplatesPage() {
       setLoading(false);
     }
   }, [search, sort]);
+
+  const refreshTemplates = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ templates: TemplateListItem[] }>(`/api/templates?q=${encodeURIComponent(search)}&sort=${sort}`);
+      setTemplates(data.templates);
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  }, [search, sort]);
+
+  const { pullDistance, isRefreshing } = usePullToRefresh(refreshTemplates);
 
   useEffect(() => {
     loadTemplates().catch((error) => toast.error(error.message));
@@ -187,6 +199,19 @@ export default function TemplatesPage() {
           <Button variant="outline" onClick={() => setPasteOpen(true)}><FileCode className="h-4 w-4" />Paste HTML</Button>
         </div>
       </div>
+
+      {(pullDistance > 0 || isRefreshing) && (
+        <div
+          className="flex justify-center items-center py-2 text-muted-foreground transition-all duration-150"
+          style={{
+            height: isRefreshing ? 48 : pullDistance,
+            opacity: Math.min(1, (isRefreshing ? 48 : pullDistance) / 48)
+          }}
+        >
+          <Loader2 className={`h-5 w-5 animate-spin ${isRefreshing ? "" : "opacity-70"}`} />
+          <span className="text-xs ml-2">{isRefreshing ? "Refreshing..." : "Pull to refresh"}</span>
+        </div>
+      )}
 
       <Card>
         <CardContent className="flex flex-col gap-3 p-4 md:flex-row">

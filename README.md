@@ -1,110 +1,126 @@
 # Custom Mail
 
-Custom Mail includes a Next.js App Router email client UI plus a standalone CSV-based bulk sender. The UI handles per-user SMTP configs stored in PostgreSQL, and the bulk sender renders HTML templates from `templates/` for one-off batch sends.
+Custom Mail is a self-hosted email client and bulk sender built with Next.js (App Router). It supports multiple users with per-user SMTP configuration, a rich composer, scheduled sends, CSV-based bulk mail merge, and monitoring tools for send status and retries.
+
+This README covers local development, Codespaces, environment setup, and common maintenance tasks.
+
+---
 
 ## Features
 
-- Multi-user signup/login with access + refresh JWTs in httpOnly cookies.
-- Per-user SMTP settings stored in PostgreSQL with AES-256-GCM encrypted SMTP passwords.
-- SMTP connection testing with health history.
-- Rich Tiptap composer with visual/raw HTML modes, preview, drafts, templates, scheduling, and send-now.
-- Sent history, draft list, template library, scheduled queue, bulk CSV mail merge, and monitor dashboard.
-- Monitor stats, send-volume chart, failed-email retry/dismiss actions, and SSE activity stream with polling behavior.
-- Tailwind/shadcn component system with tweakcn-style CSS variables in `app/globals.css`.
+- Multi-user accounts with JWT-based auth (httpOnly cookies).
+- Per-user SMTP configuration with encrypted SMTP passwords.
+- Rich editor (Tiptap) with visual and HTML modes, templates, and previews.
+- Drafts, templates, scheduled queue, sent history, and bulk CSV sending.
+- Admin console: users, announcements, templates, and audit logs.
+- Monitor dashboard with retry/dismiss actions and volume charts.
+- Security: CSP/security headers and basic rate-limiting for sensitive endpoints.
 
-## Environment
+---
 
-Create `.env` from `.env.example` and set the values:
+## Quick Start (Local)
+
+1. Copy `.env.example` to `.env` and fill the required values (database, Redis, secrets).
+
+2. Install dependencies:
+
+```bash
+npm install
+```
+
+3. Run database migrations (if using Prisma / Neon):
+
+```bash
+npx prisma migrate deploy
+```
+
+4. Seed an admin user (optional):
+
+```bash
+npx ts-node scripts/seed-admin.ts
+```
+
+5. Start development server:
+
+```bash
+npm run dev
+```
+
+Open `http://localhost:3000` in your browser.
+
+---
+
+## Required Environment Variables
+
+Create `.env` from `.env.example` and set the following (example values):
 
 ```env
-DATABASE_URL=postgresql://user:password@ep-xxx.neon.tech/neondb?sslmode=require&pgbouncer=true&connect_timeout=15
-DATABASE_URL_UNPOOLED=postgresql://user:password@ep-xxx.neon.tech/neondb?sslmode=require
-UPSTASH_REDIS_REST_URL=https://xxx.upstash.io
-UPSTASH_REDIS_REST_TOKEN=xxx
-REDIS_URL=rediss://default:<token>@<host>.upstash.io:6379
-JWT_ACCESS_SECRET=replace-with-a-long-random-secret
-JWT_REFRESH_SECRET=replace-with-another-long-random-secret
-ENCRYPTION_SECRET=replace-with-a-long-random-secret
+DATABASE_URL=postgresql://user:password@host/db
+DATABASE_URL_UNPOOLED=postgresql://user:password@host/db
+REDIS_URL=redis://user:pass@host:6379
+JWT_ACCESS_SECRET=long-random-secret
+JWT_REFRESH_SECRET=another-long-secret
+ENCRYPTION_SECRET=32-char-secret
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-CRON_SECRET=replace-with-a-long-random-secret
+CRON_SECRET=long-random-secret
 ```
 
-`ENCRYPTION_SECRET` is hashed to a 256-bit key and used only for SMTP password encryption.
+- `ENCRYPTION_SECRET` is used to derive the key for encrypting SMTP credentials.
+- If using Upstash / Neon, set their respective URLs/tokens as in `.env.example`.
 
-For the SMTP test helper (`test-smtp.js`), create `.env.local` with:
-
-```env
-SMTP_HOST=smtp.gmail.com
-SMTP_PORT=587
-SMTP_USER=you@example.com
-SMTP_PASSWORD=your-app-password
-SMTP_FROM_EMAIL=you@example.com
-SMTP_FROM_NAME=Your Name
-```
+---
 
 ## Codespaces Quickstart
 
 1. Create a Codespace for this repository.
-2. Add secrets in the Codespaces environment (or create `.env` in the repo root).
+2. Add required secrets in the Codespaces settings or create a `.env` in the repo root.
 3. Install dependencies: `npm install`.
-4. Run the dev server: `npm run dev`.
-5. Open the forwarded port 3000.
+4. Run dev server: `npm run dev` and open the forwarded port.
 
-Set the Neon and Upstash values before running migrations or the scheduler.
+---
 
-## Run
+## Scripts
 
-```bash
-npm install
-npm run dev
-```
+- `npm run dev` — Start dev server with hot reload
+- `npm run build` — Build for production
+- `npm run start` — Run the production build (after `npm run build`)
+- `npm run typecheck` — Run TypeScript checks
+- `npm run lint` — Run ESLint
 
-Open `http://localhost:3000`, create an account, then configure SMTP in `/settings`.
+---
 
-Run `npx ts-node scripts/seed-admin.ts` once to create your admin account before first login.
+## Bulk CSV Sending
 
-## Build
+Bulk send inputs are CSV files and HTML templates found in the `templates/` directory. The UI under `/bulk` guides mapping CSV columns to template variables and performs validation.
 
-```bash
-npm run typecheck
-npm run build
-npm start
-```
+If you prefer CLI automation, the repository includes helper scripts in `scripts/` for generating icons, seeding, and other maintenance tasks.
 
-## Bulk Sender (CSV + Templates)
+---
 
-The bulk sender scripts live in the repo root (`main.ts`, `mailService.ts`, `templateManager.ts`, `csvParser.ts`) and use HTML templates in `templates/`. You can run them with a TypeScript runner (for example `tsx` or `ts-node`) if you install one.
+## Admin Console
 
-Example inputs:
+- Manage users: `/admin/users`
+- Announcements: `/admin/announcements` (create/activate/deactivate/delete)
+- Audit and templates management
 
-- `Registration_Emails.csv`
-- `Remainder_Events.csv`
+Note: the admin announcements page has a refreshed UI with badges, expiry metadata and filtering.
 
-## App Routes
+---
 
-- `/login`, `/signup`
-- `/compose`
-- `/monitor`
-- `/drafts`
-- `/sent`
-- `/templates`
-- `/scheduled`
-- `/bulk`
-- `/settings`
+## Security & Deployment Notes
 
-## API Routes
+- Content-Security-Policy and several security headers are preconfigured in `next.config.mjs`.
+- Protect the `CRON_SECRET` and other secrets; the scheduled job endpoint uses a timing-safe comparison.
 
-- Auth: `/api/auth/signup`, `/api/auth/login`, `/api/auth/refresh`, `/api/auth/logout`, `/api/auth/me`
-- SMTP: `/api/smtp/settings`, `/api/smtp/test`
-- Mail: `/api/send`, `/api/send-bulk`, `/api/attachments`
-- Data: `/api/sent`, `/api/drafts`, `/api/templates`, `/api/schedule`, `/api/scheduled`
-- Monitor: `/api/monitor/stats`, `/api/monitor/chart`, `/api/monitor/stream`, `/api/monitor/failed`, `/api/monitor/retry/:id`, `/api/monitor/retry-all`, `/api/monitor/dismiss/:id`
+---
 
-## Notes
+## Contributing
 
-- HTML templates live under `templates/` for batch sending and reference.
-- Attachments uploaded through the API are stored locally under `uploads/<userId>/`.
-- BullMQ stores scheduled jobs in Redis and the app stores scheduled-email state in PostgreSQL.
-- Scheduled emails are processed by a GitHub Actions workflow that hits `/api/cron/process-scheduled` every minute. Configure GitHub Secrets:
-	- `APP_URL` (public base URL, e.g. https://your-app.vercel.app)
-	- `CRON_SECRET` (must match the server `CRON_SECRET` value)
+1. Create a branch for your change.
+2. Run `npm install` and make your edits.
+3. Run `npm run typecheck && npm run lint` and fix any issues.
+4. Open a PR with a clear description of the change and testing instructions.
+
+---
+
+If you'd like, I can also add a short DEVELOPMENT.md with common debug tips (dev server, inspecting Prisma, seed commands, email testing). 
