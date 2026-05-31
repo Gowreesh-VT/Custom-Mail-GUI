@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BarChart3, Bell, FileClock, Mail, Menu, ScanLine, Server, Shield, Users } from "lucide-react";
+import { BarChart3, Bell, BellRing, FileClock, Globe, Gauge, Mail, Menu, ScanLine, Server, Shield, Users, Wifi } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
@@ -11,6 +11,10 @@ const nav = [
   { href: "/admin", label: "Overview", icon: BarChart3 },
   { href: "/admin/users", label: "Users", icon: Users },
   { href: "/admin/smtp", label: "SMTP", icon: Server },
+  { href: "/admin/smtp-monitor", label: "SMTP Monitor", icon: Wifi },
+  { href: "/admin/quotas", label: "Quotas", icon: Gauge },
+  { href: "/admin/domain-analytics", label: "Domain Analytics", icon: Globe },
+  { href: "/admin/push", label: "Notifications", icon: BellRing },
   { href: "/admin/operators", label: "Operators", icon: ScanLine },
   { href: "/admin/audit", label: "Audit Log", icon: FileClock },
   { href: "/admin/announcements", label: "Announcements", icon: Bell }
