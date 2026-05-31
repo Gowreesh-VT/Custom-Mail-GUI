@@ -51,18 +51,36 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
   const [btnUrl, setBtnUrl] = useState("");
   const [btnBgColor, setBtnBgColor] = useState("#3b82f6");
   const [btnTextColor, setBtnTextColor] = useState("#ffffff");
+  const [, setToolbarRenderTick] = useState(0);
 
   const editor = useEditor({
     extensions: [StarterKit, Underline, Link, Image, TextStyle, Color, TextAlign.configure({ types: ["heading", "paragraph"] })],
     content: value,
     editorProps: { attributes: { class: "prose-editor rounded-md border bg-background p-4 text-sm min-h-[200px]" } },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    onSelectionUpdate: () => setToolbarRenderTick((tick) => tick + 1),
+    onTransaction: () => setToolbarRenderTick((tick) => tick + 1),
     onFocus: () => {
       if (typeof window !== "undefined" && window.innerWidth < 768) {
         setIsExpanded(true);
       }
     }
   });
+
+  function isToolActive(label: string) {
+    if (!editor) return false;
+    if (label === "Bold") return editor.isActive("bold");
+    if (label === "Italic") return editor.isActive("italic");
+    if (label === "Underline") return editor.isActive("underline");
+    if (label === "Strike") return editor.isActive("strike");
+    if (label === "H1") return editor.isActive("heading", { level: 1 });
+    if (label === "H2") return editor.isActive("heading", { level: 2 });
+    if (label === "Bullet list") return editor.isActive("bulletList");
+    if (label === "Ordered list") return editor.isActive("orderedList");
+    if (label === "Quote") return editor.isActive("blockquote");
+    if (label === "Code block") return editor.isActive("codeBlock");
+    return false;
+  }
 
   useEffect(() => {
     apiFetch<{ campaigns: any[] }>("/api/qr/campaigns?isActive=true").then((data) => setCampaigns(data.campaigns)).catch(() => {});
@@ -77,11 +95,21 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
           <div className="flex flex-wrap gap-1">
             {tools.map(([label, Icon, action]) => (
               <Tooltip key={label}>
-                <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => editor && action(editor)}><Icon className="h-4 w-4" /></Button></TooltipTrigger>
+                <TooltipTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => editor && action(editor)}
+                    className={cn(isToolActive(label) && "bg-accent text-accent-foreground")}
+                  >
+                    <Icon className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
                 <TooltipContent>{label}</TooltipContent>
               </Tooltip>
             ))}
-            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("link"); setUrl(""); }}><LinkIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Link</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" className={cn(editor?.isActive("link") && "bg-accent text-accent-foreground")} onClick={() => { setDialog("link"); setUrl(""); }}><LinkIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Link</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("image"); setUrl(""); }}><ImageIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Image</TooltipContent></Tooltip>
             <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => setDialog("qr")}><QrCode className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Insert QR</TooltipContent></Tooltip>
             <Tooltip>
