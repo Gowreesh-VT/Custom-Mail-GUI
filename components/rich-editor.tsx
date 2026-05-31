@@ -21,6 +21,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/client-api";
+import { cn } from "@/lib/utils";
+
 
 const tools = [
   ["Bold", Bold, (e: any) => e.chain().focus().toggleBold().run()],
@@ -42,6 +44,7 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
   const [url, setUrl] = useState("");
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [qr, setQr] = useState({ campaignId: "", name: "", email: "", url: "", text: "", size: 200, align: "center", alt: "QR Code" });
+  const [isExpanded, setIsExpanded] = useState(false);
 
   // Tracked Button state
   const [btnLabel, setBtnLabel] = useState("");
@@ -52,8 +55,13 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
   const editor = useEditor({
     extensions: [StarterKit, Underline, Link, Image, TextStyle, Color, TextAlign.configure({ types: ["heading", "paragraph"] })],
     content: value,
-    editorProps: { attributes: { class: "prose-editor rounded-md border bg-background p-4 text-sm" } },
-    onUpdate: ({ editor }) => onChange(editor.getHTML())
+    editorProps: { attributes: { class: "prose-editor rounded-md border bg-background p-4 text-sm min-h-[200px]" } },
+    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    onFocus: () => {
+      if (typeof window !== "undefined" && window.innerWidth < 768) {
+        setIsExpanded(true);
+      }
+    }
   });
 
   useEffect(() => {
@@ -63,29 +71,47 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
   const selectedCampaign = campaigns.find((campaign) => campaign.id === qr.campaignId);
 
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", isExpanded && "fixed inset-0 z-50 bg-zinc-950 p-4 flex flex-col h-screen md:relative md:inset-auto md:z-auto md:bg-transparent md:p-0 md:h-auto")}>
       <TooltipProvider>
-        <div className="flex flex-wrap gap-1 rounded-md border bg-card p-1">
-          {tools.map(([label, Icon, action]) => (
-            <Tooltip key={label}>
-              <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => editor && action(editor)}><Icon className="h-4 w-4" /></Button></TooltipTrigger>
-              <TooltipContent>{label}</TooltipContent>
+        <div className="flex flex-wrap gap-1 rounded-md border bg-card p-1 items-center justify-between">
+          <div className="flex flex-wrap gap-1">
+            {tools.map(([label, Icon, action]) => (
+              <Tooltip key={label}>
+                <TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => editor && action(editor)}><Icon className="h-4 w-4" /></Button></TooltipTrigger>
+                <TooltipContent>{label}</TooltipContent>
+              </Tooltip>
+            ))}
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("link"); setUrl(""); }}><LinkIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Link</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("image"); setUrl(""); }}><ImageIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Image</TooltipContent></Tooltip>
+            <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => setDialog("qr")}><QrCode className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Insert QR</TooltipContent></Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("trackedButton"); setBtnLabel(""); setBtnUrl(""); }}>
+                  <MousePointerClick className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Insert Tracked Button</TooltipContent>
             </Tooltip>
-          ))}
-          <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("link"); setUrl(""); }}><LinkIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Link</TooltipContent></Tooltip>
-          <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("image"); setUrl(""); }}><ImageIcon className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Image</TooltipContent></Tooltip>
-          <Tooltip><TooltipTrigger asChild><Button type="button" variant="ghost" size="icon" onClick={() => setDialog("qr")}><QrCode className="h-4 w-4" /></Button></TooltipTrigger><TooltipContent>Insert QR</TooltipContent></Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button type="button" variant="ghost" size="icon" onClick={() => { setDialog("trackedButton"); setBtnLabel(""); setBtnUrl(""); }}>
-                <MousePointerClick className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Insert Tracked Button</TooltipContent>
-          </Tooltip>
+          </div>
+          {isExpanded && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setIsExpanded(false);
+                editor?.commands.blur();
+              }}
+              className="ml-auto font-bold md:hidden"
+            >
+              Done
+            </Button>
+          )}
         </div>
       </TooltipProvider>
-      <EditorContent editor={editor} />
+      <div className={cn("flex-1", isExpanded && "overflow-y-auto mt-2 min-h-0")}>
+        <EditorContent editor={editor} className={cn(isExpanded && "h-full [&>.prose-editor]:h-full [&>.prose-editor]:min-h-full [&>.prose-editor]:max-h-none")} />
+      </div>
       <Dialog open={dialog !== null} onOpenChange={(open) => !open && setDialog(null)}>
         <DialogContent>
           <DialogHeader>

@@ -62,6 +62,7 @@ model User {
   emailEvents        EmailEvent[]
   qrCampaigns        QrCampaign[]
   certificateTemplates CertificateTemplate[]
+  pushSubscriptions  PushSubscription[]
 }
 
 // ---------------------------------------------------------------------------
@@ -334,6 +335,9 @@ model SystemConfig {
   smtpFromEmail      String?
   smtpEncryption     String?
   smtpRejectUnauth   Boolean  @default(true)
+  vapidPublicKey     String?
+  vapidPrivateKey    String?
+  vapidEmail         String?
   updatedAt          DateTime @updatedAt
   updatedById        String?
 }
@@ -536,3 +540,28 @@ model RetentionPolicy {
 
   @@map("retention_policy")
 }
+
+// ---------------------------------------------------------------------------
+// PUSH SUBSCRIPTION
+// ---------------------------------------------------------------------------
+
+model PushSubscription {
+  id            String   @id @default(cuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Web Push subscription object fields
+  endpoint      String   @unique
+  p256dh        String   // public key
+  auth          String   // auth secret
+  
+  // Device info
+  deviceName    String?  // "iPhone 14", "Pixel 7"
+  userAgent     String?
+  platform      String?  // "iOS" | "Android"
+  
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  lastUsedAt    DateTime @default(now())
+}
+
