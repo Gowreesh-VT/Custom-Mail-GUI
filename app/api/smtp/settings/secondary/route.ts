@@ -79,6 +79,10 @@ export async function GET(req: NextRequest) {
       passwordSet: Boolean(user.smtpSecondaryPassEnc)
     });
   } catch (error: any) {
-    return jsonError(error.message, 401);
+    console.error("GET /api/smtp/settings/secondary error:", error);
+    if (error.message === "User not found") {
+      return jsonError("Authentication required", 401, "AUTH_REQUIRED");
+    }
+    return jsonError(error.message, 500);
   }
 }

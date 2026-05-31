@@ -9,6 +9,8 @@ import { fromJson, toJson } from "@/lib/json-fields";
 import { prisma } from "@/lib/prisma";
 import { detectQrPlaceholders, replaceQrPlaceholders, type QrFieldConfig } from "@/lib/qr";
 import { generateCertificate, parseCertFields, type CertField } from "@/lib/certificate";
+import { sendPushToUser } from "@/lib/push";
+
 
 const encoder = new TextEncoder();
 
@@ -51,6 +53,8 @@ export async function POST(req: NextRequest) {
       let failedQrCount = 0;
       let certificateCount = 0;
       let failedCertificateCount = 0;
+      let successCount = 0;
+      let failCount = 0;
       try {
         controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length, bulkJobId })}\n`));
         for (let index = 0; index < rows.length; index++) {
@@ -152,6 +156,7 @@ export async function POST(req: NextRequest) {
             });
 
             if (result.success) {
+              successCount++;
               await prisma.email.update({
                 where: { id: email.id },
                 data: { status: "sent", usedFallbackSmtp: result.usedFallback }
@@ -159,6 +164,7 @@ export async function POST(req: NextRequest) {
               await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, isBulk: true, usedFallback: result.usedFallback }, email.id, req);
               controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email, failedQrCount, certificateCount, failedCertificateCount })}\n`));
             } else {
+              failCount++;
               await prisma.email.update({
                 where: { id: email.id },
                 data: { status: "failed", errorMsg: result.error, usedFallbackSmtp: result.usedFallback }
@@ -178,6 +184,7 @@ export async function POST(req: NextRequest) {
               })}\n`));
             }
           } catch (error: any) {
+            failCount++;
             console.error(`Bulk send loop iteration error for recipient ${row.email}:`, error);
             controller.enqueue(encoder.encode(`${toJson({ type: "failed", index, email: row.email, error: error.message, failedQrCount, certificateCount, failedCertificateCount })}\n`));
           }
@@ -188,6 +195,14 @@ export async function POST(req: NextRequest) {
           await logAudit("certificate.bulk_generated", String(user._id), { templateName: certTemplate.name, count: certificateCount, failed: failedCertificateCount }, undefined, req);
         }
         controller.enqueue(encoder.encode(`${toJson({ type: req.signal.aborted ? "stopped" : "completed", bulkJobId, failedQrCount, certificateCount, failedCertificateCount })}\n`));
+
+        // Trigger PWA push notification summary
+        sendPushToUser(String(user._id), {
+          title: "Bulk Send Complete 📤",
+          body: `${successCount} sent, ${failCount} failed`,
+          url: `/sent/campaign/${bulkJobId}`,
+          tag: "bulk-complete"
+        }).catch(err => console.error("Error sending bulk-complete push:", err));
       } catch (error) {
         console.error("[send-bulk] stream failed:", error);
         controller.enqueue(encoder.encode(`${toJson({ type: "failed", error: error instanceof Error ? error.message : String(error), failedQrCount, certificateCount, failedCertificateCount })}\n`));
