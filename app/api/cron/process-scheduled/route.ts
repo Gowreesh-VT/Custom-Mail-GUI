@@ -1,7 +1,7 @@
 import crypto from "crypto";
 import { type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
-import { sendMailForUser } from "@/lib/mailer";
+import { sendEmailWithFallback } from "@/lib/mailer";
 import { fromJson, toStringArray } from "@/lib/json-fields";
 import { logAudit } from "@/lib/audit";
 import type { AttachmentRecord } from "@/types/models";
@@ -79,19 +79,24 @@ async function processScheduled(req: NextRequest) {
       const attachments = fromJson<AttachmentRecord[]>(scheduled.attachments, []);
       const sentAt = new Date();
 
-      await sendMailForUser(scheduled.user, {
+      const result = await sendEmailWithFallback({
+        userId: scheduled.userId,
         to,
         cc,
         bcc,
         replyTo: scheduled.replyTo ?? undefined,
         subject: scheduled.subject,
-        bodyHtml: scheduled.bodyHtml,
+        html: scheduled.bodyHtml,
         attachments: attachments.map((attachment) => ({
           name: attachment.name,
           path: attachment.path,
           contentType: attachment.mimeType
         }))
       });
+
+      if (!result.success) {
+        throw new Error(result.error || "Failed to send scheduled email");
+      }
 
       await prisma.scheduledEmail.update({
         where: { id: scheduled.id },
@@ -110,6 +115,7 @@ async function processScheduled(req: NextRequest) {
           attachments: scheduled.attachments,
           status: "sent",
           isBulk: false,
+          usedFallbackSmtp: result.usedFallback,
           sentAt
         }
       });

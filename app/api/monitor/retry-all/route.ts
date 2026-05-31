@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { sendMailForUser } from "@/lib/mailer";
+import { sendEmailWithFallback } from "@/lib/mailer";
 import { prisma } from "@/lib/prisma";
 import { emailRecord } from "@/lib/records";
 import { toJson } from "@/lib/json-fields";
@@ -14,9 +14,22 @@ export async function POST(req: NextRequest) {
   const results = [];
   for (const email of emails) {
     try {
-      await sendMailForUser(user, { to: email.to, cc: email.cc, bcc: email.bcc, replyTo: email.replyTo || undefined, subject: email.subject, bodyHtml: email.bodyHtml, attachments: email.attachments as any });
+      const result = await sendEmailWithFallback({
+        userId: String(user._id),
+        to: email.to,
+        cc: email.cc,
+        bcc: email.bcc,
+        replyTo: email.replyTo || undefined,
+        subject: email.subject,
+        html: email.bodyHtml,
+        attachments: email.attachments as any,
+        emailId: email.id
+      });
+      if (!result.success) {
+        throw new Error(result.error || "Retry failed");
+      }
       const retryHistory = [...email.retryHistory, { attemptedAt: new Date().toISOString(), success: true }];
-      await prisma.email.update({ where: { id: email.id }, data: { status: "sent", errorMsg: null, retryCount: { increment: 1 }, retryHistory: toJson(retryHistory) } });
+      await prisma.email.update({ where: { id: email.id }, data: { status: "sent", errorMsg: null, retryCount: { increment: 1 }, usedFallbackSmtp: result.usedFallback, retryHistory: toJson(retryHistory) } });
       results.push({ id: email.id, success: true });
     } catch (error: any) {
       const retryHistory = [...email.retryHistory, { attemptedAt: new Date().toISOString(), success: false, error: error.message }];

@@ -17,13 +17,23 @@ import { apiFetch } from "@/lib/client-api";
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [data, setData] = useState<any>(null);
+  const [emailPage, setEmailPage] = useState(1);
 
   useEffect(() => {
-    apiFetch<any>(`/api/admin/users/${id}`).then(setData);
+    setEmailPage(1);
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    apiFetch<any>(`/api/admin/users/${id}?emailPage=${emailPage}`).then(setData);
+  }, [id, emailPage]);
 
   const user = data?.user;
   const emails = data?.emails || [];
+  const emailsTotal = data?.emailsTotal || 0;
+  const emailPageSize = data?.emailPageSize || 25;
+  const totalEmailPages = Math.max(1, Math.ceil(emailsTotal / emailPageSize));
+  const currentEmailPage = data?.emailPage || emailPage;
   const sentMonth = data?.sentThisMonth ?? 0;
   const failedTotal = data?.failedTotal ?? 0;
 
@@ -88,12 +98,73 @@ export default function AdminUserDetailPage() {
               <CardContent className="text-2xl font-semibold">{user.monthlyLimit || "Unlimited"}</CardContent>
             </Card>
           </div>
+
+          <div className="grid gap-4 md:grid-cols-2 mt-4">
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">SMTP Health</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm">
+                  <span className="font-semibold">Host:</span> {user.smtpHost || "Not configured"}
+                </p>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold">Status:</span>
+                  {user.smtpHealthLog && user.smtpHealthLog[0] ? (
+                    <Badge variant={user.smtpHealthLog[0].success ? "sent" : "failed"}>
+                      {user.smtpHealthLog[0].success ? "Connected" : "Failed"}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">Untested</span>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-medium">Fallback SMTP</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2">
+                <p className="text-sm">
+                  <span className="font-semibold">Fallback:</span>{" "}
+                  <Badge variant={user.smtpFallbackEnabled ? "sent" : "outline"}>
+                    {user.smtpFallbackEnabled ? "Enabled" : "Disabled"}
+                  </Badge>
+                </p>
+                {user.smtpFallbackEnabled && (
+                  <>
+                    <p className="text-sm">
+                      <span className="font-semibold">Secondary Host:</span> {user.smtpSecondaryHost || "Not configured"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      <span className="font-semibold text-foreground">Last fallback event:</span>{" "}
+                      {user.smtpFallbackLogs && user.smtpFallbackLogs[0] ? (
+                        `${new Date(user.smtpFallbackLogs[0].createdAt).toLocaleString()} (${user.smtpFallbackLogs[0].fallbackSuccess ? "Success" : "Failed"})`
+                      ) : (
+                        "Never triggered"
+                      )}
+                    </p>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
         <TabsContent value="sent">
           <SimpleTable
             rows={emails}
             columns={["Date", "To", "Subject", "Status"]}
             render={(e) => [new Date(e.sentAt).toLocaleString(), e.to?.join(", "), e.subject, e.status]}
+            footer={
+              totalEmailPages > 1 ? (
+                <Pagination
+                  currentPage={currentEmailPage}
+                  totalPages={totalEmailPages}
+                  onPageChange={setEmailPage}
+                />
+              ) : null
+            }
           />
         </TabsContent>
         <TabsContent value="templates">
@@ -193,7 +264,7 @@ function EditUserDialog({ user, onUpdate }: { user: any; onUpdate: (user: any) =
   );
 }
 
-function SimpleTable({ rows, columns, render }: { rows: any[]; columns: string[]; render: (row: any) => React.ReactNode[] }) {
+function SimpleTable({ rows, columns, render, footer }: { rows: any[]; columns: string[]; render: (row: any) => React.ReactNode[]; footer?: React.ReactNode }) {
   return (
     <Card>
       <CardContent className="p-4 overflow-x-auto">
@@ -215,7 +286,36 @@ function SimpleTable({ rows, columns, render }: { rows: any[]; columns: string[]
             ))}
           </TableBody>
         </Table>
+        {footer ? <div className="mt-4">{footer}</div> : null}
       </CardContent>
     </Card>
+  );
+}
+
+function Pagination({ currentPage, totalPages, onPageChange }: { currentPage: number; totalPages: number; onPageChange: (page: number) => void }) {
+  const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button variant="outline" size="sm" onClick={() => onPageChange(Math.max(1, currentPage - 1))} disabled={currentPage === 1}>
+        Prev
+      </Button>
+      <div className="flex flex-wrap gap-2">
+        {pages.map((page) => (
+          <Button
+            key={page}
+            size="sm"
+            variant={page === currentPage ? "default" : "outline"}
+            onClick={() => onPageChange(page)}
+            className="min-w-10"
+          >
+            {page}
+          </Button>
+        ))}
+      </div>
+      <Button variant="outline" size="sm" onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}>
+        Next
+      </Button>
+    </div>
   );
 }

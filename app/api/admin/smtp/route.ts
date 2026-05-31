@@ -30,10 +30,18 @@ export async function GET(req: NextRequest) {
       name: true,
       email: true,
       smtpHost: true,
+      smtpFallbackEnabled: true,
+      smtpSecondaryHost: true,
+      smtpSecondaryPort: true,
       smtpHealthLogs: {
         orderBy: { testedAt: "desc" },
         take: 1,
         select: { success: true, testedAt: true }
+      },
+      smtpFallbackLogs: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+        select: { createdAt: true }
       }
     },
     orderBy: { createdAt: "desc" }
@@ -62,7 +70,11 @@ export async function GET(req: NextRequest) {
       email: user.email,
       host: user.smtpHost || "",
       lastTested: user.smtpHealthLogs[0]?.testedAt,
-      status: user.smtpHealthLogs[0]?.success
+      status: user.smtpHealthLogs[0]?.success,
+      fallbackEnabled: user.smtpFallbackEnabled,
+      secondaryHost: user.smtpSecondaryHost,
+      secondaryPort: user.smtpSecondaryPort,
+      lastFallbackTriggered: user.smtpFallbackLogs[0]?.createdAt
     }))
   });
 }
