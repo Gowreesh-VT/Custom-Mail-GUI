@@ -63,6 +63,12 @@ Open `http://localhost:3000`, create an account, then configure SMTP in `/settin
 
 Run `npx ts-node scripts/seed-admin.ts` once to create your admin account before first login.
 
+## PWA Setup
+
+Run `npx ts-node scripts/generate-vapid-keys.ts` once to generate VAPID keys for push notifications. Add the output variables to `.env`.
+
+Place your app icon at `public/icons/icon-source.png` (1024x1024) then run `npx ts-node scripts/generate-pwa-icons.ts` and `npx ts-node scripts/generate-splash-screens.ts` to generate PWA assets.
+
 ## Build
 
 ```bash
