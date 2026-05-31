@@ -15,13 +15,38 @@ export async function GET(req: NextRequest) {
       const send = (event: unknown) => controller.enqueue(encoder.encode(`data: ${toJson(event)}\n\n`));
       send({ type: "info", message: "Connected to activity stream", at: new Date().toISOString() });
       const timer = setInterval(async () => {
-        const [emails, scheduled] = await Promise.all([
+        const [emails, scheduled, fallbacks] = await Promise.all([
           prisma.email.findMany({ where: { userId: String(user._id), sentAt: { gt: lastSeen } }, orderBy: { sentAt: "asc" }, take: 20 }),
-          prisma.scheduledEmail.findMany({ where: { userId: String(user._id), updatedAt: { gt: lastSeen } }, orderBy: { updatedAt: "asc" }, take: 20 })
+          prisma.scheduledEmail.findMany({ where: { userId: String(user._id), updatedAt: { gt: lastSeen } }, orderBy: { updatedAt: "asc" }, take: 20 }),
+          prisma.smtpFallbackLog.findMany({ where: { userId: String(user._id), createdAt: { gt: lastSeen } }, orderBy: { createdAt: "asc" }, take: 20 })
         ]);
         lastSeen = new Date();
         emails.forEach((email) => send({ type: email.status, to: toStringArray(email.toAddresses)[0], subject: email.subject, error: email.errorMsg, at: email.sentAt }));
         scheduled.forEach((item) => send({ type: "scheduled", subject: item.subject, status: item.status, at: item.updatedAt }));
+        fallbacks.forEach((log) => {
+          if (log.fallbackUsed) {
+            send({
+              type: "smtp.fallback_used",
+              to: log.recipientEmail || "",
+              error: log.primaryError,
+              at: log.primaryAttemptAt.toISOString()
+            });
+            if (log.fallbackSuccess) {
+              send({
+                type: "smtp.fallback_success",
+                to: log.recipientEmail || "",
+                at: log.fallbackAttemptAt?.toISOString() || log.createdAt.toISOString()
+              });
+            } else {
+              send({
+                type: "smtp.fallback_failed",
+                to: log.recipientEmail || "",
+                error: log.fallbackError || "Fallback SMTP also failed",
+                at: log.fallbackAttemptAt?.toISOString() || log.createdAt.toISOString()
+              });
+            }
+          }
+        });
       }, 5000);
       req.signal.addEventListener("abort", () => {
         clearInterval(timer);

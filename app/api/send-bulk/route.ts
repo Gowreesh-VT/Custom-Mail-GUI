@@ -1,7 +1,7 @@
 import Papa from "papaparse";
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { sendMailForUser, createMailerTransporter } from "@/lib/mailer";
+import { sendEmailWithFallback } from "@/lib/mailer";
 import { applyMergeFields, jsonError } from "@/lib/utils";
 import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
@@ -52,7 +52,6 @@ export async function POST(req: NextRequest) {
       let certificateCount = 0;
       let failedCertificateCount = 0;
       try {
-        const transporter = await createMailerTransporter(String(user._id));
         controller.enqueue(encoder.encode(`${toJson({ type: "started", total: rows.length, bulkJobId })}\n`));
         for (let index = 0; index < rows.length; index++) {
           if (req.signal.aborted) break;
@@ -133,7 +132,7 @@ export async function POST(req: NextRequest) {
                 subject: payload.subject,
                 bodyHtml: payload.bodyHtml,
                 attachments: toJson(attachments.map((attachment) => ({ name: attachment.name, size: attachment.content.length, mimeType: attachment.contentType }))),
-                status: "sent",
+                status: "sending",
                 isBulk: true,
                 bulkJobId,
                 sentAt: new Date(),
@@ -142,28 +141,44 @@ export async function POST(req: NextRequest) {
                 mergeData: toJson(values)
               }
             });
-            await sendMailForUser(user, { ...payload, bodyHtml: injectTracking(payload.bodyHtml, email.id, true) }, transporter);
-            await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, isBulk: true }, email.id, req);
-            controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email, failedQrCount, certificateCount, failedCertificateCount })}\n`));
+            
+            const result = await sendEmailWithFallback({
+              userId: String(user._id),
+              to: payload.to,
+              subject: payload.subject,
+              html: injectTracking(payload.bodyHtml, email.id, true),
+              attachments: payload.attachments,
+              emailId: email.id
+            });
+
+            if (result.success) {
+              await prisma.email.update({
+                where: { id: email.id },
+                data: { status: "sent", usedFallbackSmtp: result.usedFallback }
+              });
+              await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, isBulk: true, usedFallback: result.usedFallback }, email.id, req);
+              controller.enqueue(encoder.encode(`${toJson({ type: "sent", index, email: row.email, failedQrCount, certificateCount, failedCertificateCount })}\n`));
+            } else {
+              await prisma.email.update({
+                where: { id: email.id },
+                data: { status: "failed", errorMsg: result.error, usedFallbackSmtp: result.usedFallback }
+              });
+              await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: result.error, isBulk: true, usedFallback: result.usedFallback }, email.id, req);
+              controller.enqueue(encoder.encode(`${toJson({ 
+                type: "failed", 
+                index, 
+                email: row.email, 
+                error: result.error, 
+                bothFailed: result.bothFailed,
+                primaryError: result.primaryError,
+                fallbackError: result.fallbackError,
+                failedQrCount, 
+                certificateCount, 
+                failedCertificateCount 
+              })}\n`));
+            }
           } catch (error: any) {
-            const email = await prisma.email.create({
-              data: {
-                userId: String(user._id),
-                toAddresses: toJson(payload.to)!,
-                subject: payload.subject,
-                bodyHtml: payload.bodyHtml,
-                attachments: toJson(attachments.map((attachment) => ({ name: attachment.name, size: attachment.content.length, mimeType: attachment.contentType }))),
-                status: "failed",
-                errorMsg: error.message,
-                isBulk: true,
-                bulkJobId,
-                sentAt: new Date(),
-                templateId,
-                templateName: template.name,
-                mergeData: toJson(values)
-              }
-            });
-            await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: error.message, isBulk: true }, email.id, req);
+            console.error(`Bulk send loop iteration error for recipient ${row.email}:`, error);
             controller.enqueue(encoder.encode(`${toJson({ type: "failed", index, email: row.email, error: error.message, failedQrCount, certificateCount, failedCertificateCount })}\n`));
           }
           if (index < rows.length - 1) await new Promise((resolve) => setTimeout(resolve, delayMs));

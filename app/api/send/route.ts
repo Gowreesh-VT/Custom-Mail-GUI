@@ -1,7 +1,7 @@
 import { type NextRequest } from "next/server";
 import { z } from "zod";
 import { requireUser } from "@/lib/api";
-import { sendMailForUser } from "@/lib/mailer";
+import { sendEmailWithFallback } from "@/lib/mailer";
 import { parseList, jsonError } from "@/lib/utils";
 import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
@@ -73,36 +73,41 @@ export async function POST(req: NextRequest) {
         subject: payload.subject,
         bodyHtml: payload.bodyHtml,
         attachments: toJson(payload.attachments),
-        status: "sent",
+        status: "sending",
         sentAt: new Date(),
         trackingEnabled: payload.trackingEnabled
       }
     });
-    const result = await sendMailForUser(user, { ...payload, bodyHtml: injectTracking(payload.bodyHtml, email.id, payload.trackingEnabled) });
-    await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject }, email.id, req);
-    return Response.json({ success: true, messageId: result.messageId, emailId: email.id });
-  } catch (error: any) {
-    if (!user || !payload) {
-      return jsonError(error.message || "Send failed", 400, "SEND_FAILED");
+    
+    const result = await sendEmailWithFallback({
+      userId: String(user._id),
+      to: payload.to,
+      subject: payload.subject,
+      html: injectTracking(payload.bodyHtml, email.id, payload.trackingEnabled),
+      attachments: payload.attachments,
+      replyTo: payload.replyTo,
+      cc: payload.cc,
+      bcc: payload.bcc,
+      emailId: email.id
+    });
+
+    if (result.success) {
+      await prisma.email.update({
+        where: { id: email.id },
+        data: { status: "sent", usedFallbackSmtp: result.usedFallback }
+      });
+      await logAudit("email.sent", String(user._id), { to: payload.to, subject: payload.subject, usedFallback: result.usedFallback }, email.id, req);
+      return Response.json({ success: true, messageId: result.messageId, emailId: email.id });
+    } else {
+      await prisma.email.update({
+        where: { id: email.id },
+        data: { status: "failed", errorMsg: result.error, usedFallbackSmtp: result.usedFallback }
+      });
+      await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: result.error, usedFallback: result.usedFallback }, email.id, req);
+      return jsonError(`Send failed: ${result.error}`, 400, "SEND_FAILED");
     }
-    const email = await prisma.email.create({
-      data: {
-        userId: String(user._id),
-        toAddresses: toJson(payload.to)!,
-        ccAddresses: toJson(payload.cc),
-        bccAddresses: toJson(payload.bcc),
-        replyTo: payload.replyTo ?? null,
-        subject: payload.subject,
-        bodyHtml: payload.bodyHtml,
-        attachments: toJson(payload.attachments),
-        status: "failed",
-        errorMsg: error.message,
-        sentAt: new Date(),
-        trackingEnabled: payload.trackingEnabled
-      }
-    });
-    await logAudit("email.failed", String(user._id), { to: payload.to, subject: payload.subject, error: error.message }, email.id, req);
-    return jsonError(`Send failed: ${error.message}`, 400, "SEND_FAILED");
+  } catch (error: any) {
+    return jsonError(error.message || "Send failed", 400, "SEND_FAILED");
   }
 }
 

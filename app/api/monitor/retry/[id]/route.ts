@@ -1,6 +1,6 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
-import { sendMailForUser } from "@/lib/mailer";
+import { sendEmailWithFallback } from "@/lib/mailer";
 import { jsonError } from "@/lib/utils";
 import { prisma } from "@/lib/prisma";
 import { emailRecord } from "@/lib/records";
@@ -12,18 +12,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const email = emailRecord(await prisma.email.findFirst({ where: { id, userId: String(user._id), status: "failed" } }));
   if (!email) return jsonError("Failed email not found", 404);
   try {
-    await sendMailForUser(user, {
+    const result = await sendEmailWithFallback({
+      userId: String(user._id),
       to: email.to,
       cc: email.cc,
       bcc: email.bcc,
       replyTo: email.replyTo || undefined,
       subject: email.subject,
-      bodyHtml: email.bodyHtml,
-      attachments: email.attachments as any
+      html: email.bodyHtml,
+      attachments: email.attachments as any,
+      emailId: id
     });
+    if (!result.success) {
+      throw new Error(result.error || "Retry failed");
+    }
     await prisma.email.update({
       where: { id },
-      data: { status: "sent", errorMsg: null, retryCount: { increment: 1 }, retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: true }]) }
+      data: { status: "sent", errorMsg: null, retryCount: { increment: 1 }, usedFallbackSmtp: result.usedFallback, retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: true }]) }
     });
     return Response.json({ success: true });
   } catch (error: any) {

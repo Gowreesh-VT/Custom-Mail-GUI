@@ -126,6 +126,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ emai
         clickCount: email.clickCount,
         firstOpenedAt: email.firstOpenedAt?.toISOString() || null,
         lastOpenedAt: email.lastOpenedAt?.toISOString() || null,
+        usedFallbackSmtp: email.usedFallbackSmtp,
       },
       events: events.map((e) => ({
         id: e.id,
