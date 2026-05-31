@@ -30,6 +30,26 @@ export function PwaUpdatePrompt() {
         newWorker.addEventListener("statechange", () => {
           if (newWorker.state === "installed" && navigator.serviceWorker.controller) {
             setShowPrompt(true);
+
+            // Trigger global device notification
+            if (Notification.permission === "granted") {
+              try {
+                reg.showNotification("Update Available", {
+                  body: "A new version of Custom Mail is ready. Tap to install.",
+                  icon: "/icons/icon-192.png",
+                  badge: "/icons/icon-96.png",
+                  tag: "app-update",
+                  requireInteraction: true
+                });
+              } catch (e) {
+                new Notification("Update Available", {
+                  body: "A new version of Custom Mail is ready. Tap to install.",
+                  icon: "/icons/icon-192.png",
+                  badge: "/icons/icon-96.png",
+                  tag: "app-update"
+                });
+              }
+            }
           }
         });
       });

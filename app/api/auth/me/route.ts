@@ -24,9 +24,25 @@ export async function GET(req: NextRequest) {
       user.smtpConfig?.passwordEnc &&
       user.smtpConfig?.fromEmail
     );
+    let extraFieldsObj = {};
+    if (user.extraFields) {
+      try {
+        extraFieldsObj = JSON.parse(user.extraFields);
+      } catch (e) {
+        console.error("Failed to parse extraFields in auth/me", e);
+      }
+    }
     return Response.json({
       success: true,
-      user: { id: user._id, name: user.name, email: user.email, role: user.role || "user", forcePasswordReset: Boolean(user.forcePasswordReset) },
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role || "user",
+        forcePasswordReset: Boolean(user.forcePasswordReset),
+        phone: user.phone || "",
+        extraFields: extraFieldsObj
+      },
       smtpConfigured: globalConfigured || userConfigured
     });
   } catch {

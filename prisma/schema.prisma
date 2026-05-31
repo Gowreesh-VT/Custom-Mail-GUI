@@ -24,6 +24,8 @@ model User {
   monthlyLimit       Int      @default(0)             // 0 = unlimited
   createdAt          DateTime @default(now())
   updatedAt          DateTime @updatedAt
+  phone              String?
+  extraFields        String?                            // JSON: object
 
   // SMTP config (nullable - user may not have configured yet)
   smtpHost           String?
