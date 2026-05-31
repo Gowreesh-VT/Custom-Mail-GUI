@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Eye, Loader2, Paperclip, Save, Send, Clock, Layers, Star } from "lucide-react";
+import { useNetworkStatus } from "@/hooks/use-network-status";
+
 import DOMPurify from "dompurify";
 import { toast } from "sonner";
 import { RichEditor } from "@/components/rich-editor";
@@ -12,6 +14,8 @@ import { detectQrPlaceholders } from "@/lib/qr-placeholders";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { saveOfflineDraft } from "@/lib/offline-storage";
+
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,6 +45,9 @@ export default function ComposePage() {
   const [savingDraft, setSavingDraft] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [autoSaveStatus, setAutoSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const isOnline = useNetworkStatus();
+
 
   useEffect(() => {
     let ignore = false;
@@ -77,6 +84,45 @@ export default function ComposePage() {
   }, [bodyHtml]);
 
   useEffect(() => {
+    if (!subject && (!bodyHtml || bodyHtml === "<p>Hello,</p>") && to.length === 0 && cc.length === 0 && bcc.length === 0) return;
+
+    const timer = setTimeout(() => {
+      const autoSave = async () => {
+        setAutoSaveStatus("saving");
+        if (typeof window !== "undefined" && !navigator.onLine) {
+          try {
+            await saveOfflineDraft({
+              toAddresses: JSON.stringify(to),
+              ccAddresses: JSON.stringify(cc),
+              bccAddresses: JSON.stringify(bcc),
+              replyTo,
+              subject,
+              bodyHtml
+            });
+            setAutoSaveStatus("saved");
+          } catch (err) {
+            setAutoSaveStatus("error");
+          }
+        } else {
+          try {
+            await apiFetch("/api/drafts", {
+              method: "POST",
+              body: JSON.stringify({ to, cc, bcc, replyTo, subject, bodyHtml })
+            });
+            setAutoSaveStatus("saved");
+          } catch (err) {
+            setAutoSaveStatus("error");
+          }
+        }
+      };
+      autoSave();
+    }, 5000);
+
+    return () => clearTimeout(timer);
+  }, [to, cc, bcc, replyTo, subject, bodyHtml]);
+
+
+  useEffect(() => {
     function keys(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
         event.preventDefault();
@@ -110,9 +156,22 @@ export default function ComposePage() {
     try {
       setSavingDraft(true);
       setAutoSaveStatus("saving");
-      await apiFetch("/api/drafts", { method: "POST", body: JSON.stringify({ to, cc, bcc, replyTo, subject, bodyHtml }) });
-      toast.success("Draft saved");
-      setAutoSaveStatus("saved");
+      if (typeof window !== "undefined" && !navigator.onLine) {
+        await saveOfflineDraft({
+          toAddresses: JSON.stringify(to),
+          ccAddresses: JSON.stringify(cc),
+          bccAddresses: JSON.stringify(bcc),
+          replyTo,
+          subject,
+          bodyHtml
+        });
+        toast.info("Saved locally (will sync when online)");
+        setAutoSaveStatus("saved");
+      } else {
+        await apiFetch("/api/drafts", { method: "POST", body: JSON.stringify({ to, cc, bcc, replyTo, subject, bodyHtml }) });
+        toast.success("Draft saved");
+        setAutoSaveStatus("saved");
+      }
     } catch (error: any) {
       toast.error(error.message);
       setAutoSaveStatus("error");
@@ -261,9 +320,11 @@ export default function ComposePage() {
               <TabsContent value="raw"><Textarea value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} className="min-h-96 font-mono" /></TabsContent>
             </Tabs>
             <div className="flex flex-wrap gap-2">
-              <Button onClick={sendNow} disabled={dailyHit || sending}>
+              <Button onClick={sendNow} disabled={dailyHit || sending || !isOnline}>
                 {sending ? (
                   <><Loader2 className="h-4 w-4 animate-spin" />Sending...</>
+                ) : !isOnline ? (
+                  <><Send className="h-4 w-4" />Offline</>
                 ) : (
                   <><Send className="h-4 w-4" />Send Now</>
                 )}
@@ -275,14 +336,94 @@ export default function ComposePage() {
                   <><Save className="h-4 w-4" />Save Draft</>
                 )}
               </Button>
-              <Dialog><DialogTrigger asChild><Button variant="outline"><Clock className="h-4 w-4" />Schedule</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Schedule Send</DialogTitle></DialogHeader><div className="space-y-4"><Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} /><Button onClick={schedule}>Schedule</Button></div></DialogContent></Dialog>
-              <Dialog><DialogTrigger asChild><Button variant="outline"><Layers className="h-4 w-4" />Save as Template</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Save Template</DialogTitle></DialogHeader><form action={saveTemplate} className="space-y-4"><Input name="name" placeholder="Template name" required /><Button disabled={savingTemplate}>{savingTemplate ? (<><Loader2 className="h-4 w-4 animate-spin" />Saving...</>) : "Save Template"}</Button></form></DialogContent></Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline" disabled={!isOnline}>
+                    <Clock className="h-4 w-4" />Schedule
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Schedule Send</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <Input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)} />
+                    <Button onClick={schedule} disabled={!isOnline}>Schedule</Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+              <Dialog>
+                <DialogTrigger asChild>
+                  <Button variant="outline">
+                    <Layers className="h-4 w-4" />Save as Template
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Save Template</DialogTitle>
+                  </DialogHeader>
+                  <form action={saveTemplate} className="space-y-4">
+                    <Input name="name" placeholder="Template name" required />
+                    <Button disabled={savingTemplate}>
+                      {savingTemplate ? (<><Loader2 className="h-4 w-4 animate-spin" />Saving...</>) : "Save Template"}
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
               <Button variant="outline"><Paperclip className="h-4 w-4" />Attachments</Button>
             </div>
+            {!isOnline && (
+              <div className="text-xs text-warning bg-warning/10 border border-warning/20 rounded px-2 py-1 inline-block mt-2">
+                You are currently offline. Sending and scheduling are disabled, but you can save draft locally.
+              </div>
+            )}
             <div className="text-xs text-muted-foreground flex items-center gap-1">
               {autoSaveStatus === "saving" && (<><Loader2 className="h-3 w-3 animate-spin" /> Saving draft...</>)}
               {autoSaveStatus === "saved" && "✓ Draft saved"}
               {autoSaveStatus === "error" && (<span className="text-destructive">Draft save failed</span>)}
+            </div>
+            
+            {/* Mobile FAB Send Button & Confirmation Dialog */}
+            <div className="fixed bottom-20 right-4 z-40 md:hidden">
+              <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    size="icon"
+                    className="h-14 w-14 rounded-full shadow-lg bg-primary text-primary-foreground hover:bg-primary/95 flex items-center justify-center"
+                    disabled={dailyHit || sending || !isOnline}
+                  >
+                    {sending ? (
+                      <Loader2 className="h-6 w-6 animate-spin" />
+                    ) : (
+                      <Send className="h-6 w-6" />
+                    )}
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Send Email</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4 py-2">
+                    <p className="text-sm text-muted-foreground">
+                      Are you sure you want to send this email now?
+                    </p>
+                    <div className="flex justify-end gap-2 mt-4">
+                      <Button variant="outline" onClick={() => setConfirmOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={async () => {
+                          setConfirmOpen(false);
+                          await sendNow();
+                        }}
+                        disabled={sending}
+                      >
+                        Confirm Send
+                      </Button>
+                    </div>
+                  </div>
+                </DialogContent>
+              </Dialog>
             </div>
           </CardContent>
         </Card>

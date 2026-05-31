@@ -181,3 +181,22 @@
     @apply bg-background text-foreground;
   }
 }
+
+:root {
+  --safe-area-top: env(safe-area-inset-top);
+  --safe-area-bottom: env(safe-area-inset-bottom);
+}
+
+.bottom-nav {
+  padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+}
+
+.main-content {
+  padding-bottom: calc(4.5rem + env(safe-area-inset-bottom));
+}
+
+@media (min-width: 768px) {
+  .main-content {
+    padding-bottom: 0;
+  }
+}

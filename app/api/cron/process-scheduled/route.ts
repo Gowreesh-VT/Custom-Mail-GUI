@@ -5,6 +5,8 @@ import { sendEmailWithFallback } from "@/lib/mailer";
 import { fromJson, toStringArray } from "@/lib/json-fields";
 import { logAudit } from "@/lib/audit";
 import type { AttachmentRecord } from "@/types/models";
+import { sendPushToUser } from "@/lib/push";
+
 
 export const dynamic = "force-dynamic";
 
@@ -132,6 +134,14 @@ async function processScheduled(req: NextRequest) {
         }
       });
 
+      // Trigger PWA push notification summary
+      sendPushToUser(scheduled.userId, {
+        title: "Scheduled Email Sent ⏰",
+        body: `"${scheduled.subject}" was sent to ${to.join(", ")}`,
+        url: "/sent",
+        tag: "scheduled-sent"
+      }).catch(err => console.error("Error sending scheduled-sent push:", err));
+
       results.push({ id: scheduled.id, status: "sent" });
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : "Unknown error";
@@ -144,6 +154,20 @@ async function processScheduled(req: NextRequest) {
           retryCount: { increment: 1 }
         }
       });
+
+      // Trigger PWA push notification error
+      try {
+        const to = toStringArray(scheduled.toAddresses);
+        const errorShort = errorMsg.length > 80 ? errorMsg.slice(0, 80) + "..." : errorMsg;
+        sendPushToUser(scheduled.userId, {
+          title: "Scheduled Email Failed ❌",
+          body: `Failed to send to ${to.join(", ")}: ${errorShort}`,
+          url: "/monitor",
+          tag: "email-failed"
+        }).catch(err => console.error("Error sending scheduled-failed push:", err));
+      } catch (pushErr) {
+        console.error("Error formatting target/to fields for error push:", pushErr);
+      }
 
       results.push({ id: scheduled.id, status: "failed", error: errorMsg });
     }

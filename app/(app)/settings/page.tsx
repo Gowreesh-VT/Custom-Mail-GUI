@@ -34,12 +34,182 @@ export default function SettingsPage() {
   const [testingSecondary, setTestingSecondary] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
 
+  // PWA & Push Notification States
+  const [isInstalled, setIsInstalled] = useState(false);
+  const [isInstallable, setIsInstallable] = useState(false);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [subscribing, setSubscribing] = useState(false);
+  const [testingPush, setTestingPush] = useState(false);
+  const [subscriptions, setSubscriptions] = useState<any[]>([]);
+  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
+
   const primaryHealth = useMemo(() => health.filter((h) => h.smtpType === "primary" || !h.smtpType), [health]);
   const secondaryHealth = useMemo(() => health.filter((h) => h.smtpType === "secondary"), [health]);
 
   useEffect(() => {
     loadSettings();
+    loadSubscriptions();
+
+    if (typeof window !== "undefined") {
+      const isStandalone =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (window.navigator as any).standalone === true;
+      setIsInstalled(isStandalone);
+
+      const handleStatus = (e: any) => {
+        if (e.detail?.installed) setIsInstalled(true);
+        if (e.detail?.installable) setIsInstallable(true);
+      };
+      window.addEventListener("pwa-status", handleStatus);
+
+      if ("Notification" in window) {
+        setNotificationsEnabled(Notification.permission === "granted");
+      }
+
+      return () => {
+        window.removeEventListener("pwa-status", handleStatus);
+      };
+    }
   }, []);
+
+  async function loadSubscriptions() {
+    setLoadingSubscriptions(true);
+    try {
+      const data = await apiFetch<any>("/api/push/subscriptions");
+      if (data.success) {
+        setSubscriptions(data.subscriptions || []);
+      }
+    } catch (error) {
+      console.error("Error loading subscriptions:", error);
+    } finally {
+      setLoadingSubscriptions(false);
+    }
+  }
+
+  function urlBase64ToUint8Array(base64String: string) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    for (let i = 0; i < rawData.length; ++i) {
+      outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+  }
+
+  async function enableNotifications() {
+    try {
+      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+        toast.error("Push notifications are not supported in this browser.");
+        return;
+      }
+
+      if (Notification.permission === "denied") {
+        toast.error("Notifications blocked. Please open browser settings to allow.");
+        return;
+      }
+
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast.error("Permission not granted");
+        return;
+      }
+
+      setSubscribing(true);
+
+      const keyData = await apiFetch<any>("/api/push/vapid-key");
+      const publicKey = keyData.publicKey;
+
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey)
+      });
+
+      const p256dh = btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("p256dh")!)));
+      const auth = btoa(String.fromCharCode(...new Uint8Array(subscription.getKey("auth")!)));
+
+      const ua = navigator.userAgent;
+      let platform = "Desktop";
+      if (/android/i.test(ua)) platform = "Android";
+      else if (/iphone|ipad|ipod/i.test(ua)) platform = "iOS";
+
+      let deviceName = "Unknown Device";
+      if (platform === "iOS") {
+        deviceName = /ipad/i.test(ua) ? "iPad" : "iPhone";
+      } else if (platform === "Android") {
+        const match = ua.match(/\(([^)]+)\)/);
+        if (match && match[1]) {
+          const parts = match[1].split(";");
+          deviceName = parts[parts.length - 1].trim();
+        } else {
+          deviceName = "Android Device";
+        }
+      } else {
+        if (/chrome/i.test(ua)) deviceName = "Chrome Desktop";
+        else if (/safari/i.test(ua)) deviceName = "Safari Desktop";
+        else if (/firefox/i.test(ua)) deviceName = "Firefox Desktop";
+      }
+
+      await apiFetch("/api/push/subscribe", {
+        method: "POST",
+        body: JSON.stringify({
+          endpoint: subscription.endpoint,
+          p256dh,
+          auth,
+          deviceName,
+          userAgent: ua,
+          platform
+        })
+      });
+
+      toast.success("✅ Notifications enabled!");
+      setNotificationsEnabled(true);
+      await loadSubscriptions();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to subscribe to notifications");
+    } finally {
+      setSubscribing(false);
+    }
+  }
+
+  async function removeDevice(endpoint: string) {
+    try {
+      await apiFetch("/api/push/unsubscribe", {
+        method: "POST",
+        body: JSON.stringify({ endpoint })
+      });
+      toast.success("Device removed");
+
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (sub && sub.endpoint === endpoint) {
+        await sub.unsubscribe();
+        setNotificationsEnabled(false);
+      }
+
+      await loadSubscriptions();
+    } catch (error: any) {
+      toast.error(error.message);
+    }
+  }
+
+  async function sendTestNotification() {
+    try {
+      setTestingPush(true);
+      const res = await apiFetch<any>("/api/push/test", { method: "POST" });
+      if (res.success) {
+        toast.success("Test notification triggered!");
+      } else {
+        toast.error(res.error || "Failed to send test push");
+      }
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setTestingPush(false);
+    }
+  }
+
 
   async function loadSettings() {
     setLoading(true);
@@ -389,6 +559,135 @@ export default function SettingsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* PWA Mobile App Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">📱 Mobile App</CardTitle>
+          <CardDescription>Install Custom Mail as a progressive web app on your device.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-850 p-4">
+            <div>
+              <div className="font-bold text-sm text-zinc-100">Status</div>
+              <div className="text-xs text-zinc-400 mt-0.5">
+                {isInstalled ? (
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">✅ Installed as PWA on this device</span>
+                ) : (
+                  <span className="text-zinc-500">Not installed</span>
+                )}
+              </div>
+            </div>
+            {!isInstalled && (
+              <Button
+                onClick={() => window.dispatchEvent(new Event("trigger-pwa-install"))}
+                className="bg-blue-600 hover:bg-blue-500 text-white font-bold"
+              >
+                Install App
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* PWA Push Notifications Card */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">🔔 Push Notifications</CardTitle>
+          <CardDescription>Get notified when emails are sent, scheduled sends complete, or emails fail.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-850 p-4">
+            <div>
+              <div className="font-bold text-sm text-zinc-100">Status</div>
+              <div className="text-xs text-zinc-400 mt-0.5">
+                {notificationsEnabled ? (
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">🟢 Enabled</span>
+                ) : (
+                  <span className="text-zinc-500">Not enabled</span>
+                )}
+              </div>
+            </div>
+            {!notificationsEnabled && (
+              <Button
+                onClick={enableNotifications}
+                disabled={subscribing}
+                className="bg-blue-600 hover:bg-blue-500 text-white font-bold"
+              >
+                {subscribing ? "Enabling..." : "Enable Notifications"}
+              </Button>
+            )}
+          </div>
+
+          {notificationsEnabled && (
+            <div className="space-y-4 pt-2 border-t border-zinc-850">
+              <div className="space-y-2">
+                <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Notify me when:</Label>
+                <div className="space-y-2 pl-1">
+                  <div className="flex items-center gap-2 text-sm text-zinc-300">
+                    <span className="text-emerald-400">✅</span> Email sent successfully
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-zinc-300">
+                    <span className="text-emerald-400">✅</span> Scheduled email fires
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-zinc-300">
+                    <span className="text-emerald-400">✅</span> Bulk send completes
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-zinc-300">
+                    <span className="text-emerald-400">✅</span> Email fails
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-3 pt-2 border-t border-zinc-850">
+                <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Active Devices ({subscriptions.length})</Label>
+                {loadingSubscriptions ? (
+                  <div className="space-y-2">
+                    <Skeleton className="h-10 w-full rounded-md" />
+                  </div>
+                ) : subscriptions.length === 0 ? (
+                  <p className="text-xs text-zinc-500 italic pl-1">No active devices registered.</p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {subscriptions.map((sub) => (
+                      <div key={sub.id} className="flex items-center justify-between rounded-lg bg-zinc-900/60 border border-zinc-850 p-3 text-xs">
+                        <div className="min-w-0 flex-1 mr-3">
+                          <div className="font-semibold text-zinc-200 flex items-center gap-1.5">
+                            <span>📱 {sub.deviceName || sub.platform || "Device"}</span>
+                            {sub.platform && <span className="px-1.5 py-0.5 rounded bg-zinc-850 text-[10px] text-zinc-400">{sub.platform}</span>}
+                          </div>
+                          <div className="text-[10px] text-zinc-500 mt-1 truncate">
+                            Added: {new Date(sub.createdAt).toLocaleDateString()} · Last active: {new Date(sub.lastUsedAt).toLocaleDateString()}
+                          </div>
+                        </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeDevice(sub.endpoint)}
+                          className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-bold shrink-0"
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-4 border-t border-zinc-850 flex justify-end">
+                <Button
+                  onClick={sendTestNotification}
+                  disabled={testingPush}
+                  variant="outline"
+                  className="border-zinc-800 text-zinc-300 hover:text-white"
+                >
+                  {testingPush ? "Sending..." : "Send Test Notification"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader><CardTitle>Change Password</CardTitle><CardDescription>Update your account password without changing active sessions.</CardDescription></CardHeader>
