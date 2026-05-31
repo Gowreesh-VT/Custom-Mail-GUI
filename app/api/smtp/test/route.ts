@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
 }
 
 async function addHealthLog(userId: string, success: boolean, latencyMs: number, error?: string) {
-  await prisma.smtpHealthLog.create({ data: { userId, success, latencyMs, error } });
+  await prisma.smtpHealthLog.create({ data: { userId, success, latencyMs, error, smtpType: "primary" } });
   const logs = await prisma.smtpHealthLog.findMany({ where: { userId }, orderBy: { testedAt: "desc" }, skip: 10, select: { id: true } });
   if (logs.length) await prisma.smtpHealthLog.deleteMany({ where: { id: { in: logs.map((log) => log.id) } } });
 }

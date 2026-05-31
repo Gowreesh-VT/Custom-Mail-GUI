@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 export function SentPageClient() {
   const [emails, setEmails] = useState<any[]>([]);
@@ -54,8 +55,36 @@ export function SentPageClient() {
       render={(row) => [
         new Date(row.sentAt).toLocaleString(),
         row.to?.join(", "),
-        <details key="d"><summary>{row.subject}</summary><div className="mt-2 text-sm text-muted-foreground">First opened: {row.firstOpenedAt ? new Date(row.firstOpenedAt).toLocaleString() : "Never"}<br />Total opens: {row.openCount || 0}<br />Total clicks: {row.clickCount || 0}</div></details>,
-        <Badge key="s" variant={row.status === "sent" ? "sent" : "failed"}>{row.status}</Badge>,
+        <details key="d">
+          <summary>{row.subject}</summary>
+          <div className="mt-2 text-sm text-muted-foreground space-y-2">
+            {row.usedFallbackSmtp && (
+              <div className="rounded bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-2 text-xs font-medium flex items-center gap-1.5 w-fit">
+                <span>🔄 This email was sent using the fallback SMTP server because the primary SMTP failed.</span>
+              </div>
+            )}
+            <div>
+              First opened: {row.firstOpenedAt ? new Date(row.firstOpenedAt).toLocaleString() : "Never"}<br />
+              Total opens: {row.openCount || 0}<br />
+              Total clicks: {row.clickCount || 0}
+            </div>
+          </div>
+        </details>,
+        <TooltipProvider key="s">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <div className="flex items-center gap-1.5">
+                <Badge variant={row.status === "sent" ? "sent" : "failed"}>{row.status}</Badge>
+                {row.usedFallbackSmtp && <span className="text-sm cursor-help">🔄</span>}
+              </div>
+            </TooltipTrigger>
+            {row.usedFallbackSmtp && (
+              <TooltipContent>
+                Sent via fallback SMTP — primary SMTP failed, secondary was used
+              </TooltipContent>
+            )}
+          </Tooltip>
+        </TooltipProvider>,
         row.openCount || 0,
         row.clickCount || 0,
         <div key="actions" className="flex gap-2">

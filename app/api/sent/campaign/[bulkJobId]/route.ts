@@ -166,15 +166,30 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ bulk
     const timeSeries = Object.values(timeSeriesMap);
 
     // Recipient list details
-    const recipients = emails.map((e) => ({
-      id: e.id,
-      email: JSON.parse(e.toAddresses)[0] || "",
-      status: e.status,
-      openCount: e.openCount,
-      clickCount: e.clickCount,
-      sentAt: e.sentAt.toISOString(),
-      firstOpenedAt: e.firstOpenedAt?.toISOString() || null
-    }));
+    const recipients = emails.map((e) => {
+      const isBothFailed = e.status === "failed" && e.errorMsg?.includes("Primary: ") && e.errorMsg?.includes(" | Fallback: ");
+      let primaryError = null;
+      let fallbackError = null;
+      if (isBothFailed && e.errorMsg) {
+        const parts = e.errorMsg.split(" | Fallback: ");
+        primaryError = parts[0].replace("Primary: ", "").trim();
+        fallbackError = parts[1]?.trim() || null;
+      }
+      return {
+        id: e.id,
+        email: JSON.parse(e.toAddresses)[0] || "",
+        status: e.status,
+        openCount: e.openCount,
+        clickCount: e.clickCount,
+        sentAt: e.sentAt.toISOString(),
+        firstOpenedAt: e.firstOpenedAt?.toISOString() || null,
+        usedFallbackSmtp: e.usedFallbackSmtp,
+        bothFailed: isBothFailed,
+        primaryError,
+        fallbackError,
+        errorMsg: e.errorMsg
+      };
+    });
 
     return Response.json({
       success: true,
