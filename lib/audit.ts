@@ -9,7 +9,8 @@ const CATEGORY: Record<string, AuditCategory> = {
   auth: "AUTH",
   email: "EMAIL",
   certificate: "ADMIN",
-  admin: "ADMIN"
+  admin: "ADMIN",
+  smtp: "EMAIL"
 };
 
 type AuditParams = {

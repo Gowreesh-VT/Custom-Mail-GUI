@@ -8,7 +8,7 @@ export async function requireUser(req: NextRequest) {
   if (!payload) throw new Error("User not found");
   const user = await prisma.user.findUnique({
     where: { id: payload.id },
-    include: { smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 10 } }
+    include: { smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 20 } }
   });
   if (!user) throw new Error("User not found");
   return { payload, user: userRecord(user) };

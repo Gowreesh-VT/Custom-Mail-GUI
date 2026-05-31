@@ -35,8 +35,22 @@ model User {
   smtpEncryption     String?                          // "TLS" | "SSL" | "NONE"
   smtpRejectUnauth   Boolean  @default(true)
 
+  // Fallback SMTP feature toggle
+  smtpFallbackEnabled   Boolean  @default(false)
+
+  // Secondary SMTP config (same structure as existing smtpConfig but separate fields)
+  smtpSecondaryHost     String?
+  smtpSecondaryPort     Int?
+  smtpSecondaryUser     String?
+  smtpSecondaryPassEnc  String?  // AES encrypted
+  smtpSecondaryFromName String?
+  smtpSecondaryFromEmail String?
+  smtpSecondaryEncryption String? // "TLS"|"SSL"|"NONE"
+  smtpSecondaryRejectUnauth Boolean @default(true)
+
   // Relations
   smtpHealthLogs     SmtpHealthLog[]
+  smtpFallbackLogs   SmtpFallbackLog[]
   emails             Email[]
   drafts             Draft[]
   templates          Template[]
@@ -62,6 +76,29 @@ model SmtpHealthLog {
   latencyMs   Int?
   error       String?
   testedAt    DateTime @default(now())
+  smtpType    String   @default("primary")
+
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// SMTP FALLBACK LOG
+// ---------------------------------------------------------------------------
+
+model SmtpFallbackLog {
+  id                String   @id @default(cuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  emailId           String?
+  recipientEmail    String?
+  primaryError      String
+  primaryErrorCode  String?
+  fallbackUsed      Boolean  @default(true)
+  fallbackSuccess   Boolean  @default(false)
+  fallbackError     String?
+  primaryAttemptAt  DateTime @default(now())
+  fallbackAttemptAt DateTime?
+  createdAt         DateTime @default(now())
 
   @@index([userId])
 }
@@ -109,6 +146,9 @@ model Email {
   clickCount       Int       @default(0)
   firstOpenedAt    DateTime?
   lastOpenedAt     DateTime?
+
+  // Fallback SMTP tracking
+  usedFallbackSmtp Boolean   @default(false)
 
   // Relations
   events           EmailEvent[]

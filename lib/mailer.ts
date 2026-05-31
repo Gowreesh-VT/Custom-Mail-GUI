@@ -5,6 +5,7 @@ import path from "path";
 import { prisma } from "@/lib/prisma";
 import { decryptText } from "@/lib/encrypt";
 import { resolveUserAttachmentPath } from "@/lib/security";
+import { logAudit } from "@/lib/audit";
 
 export interface SendPayload {
   to: string[];
@@ -14,6 +15,17 @@ export interface SendPayload {
   subject: string;
   bodyHtml: string;
   attachments?: Array<{ name?: string; path?: string; content?: Buffer; contentType?: string }>;
+}
+
+export interface SendEmailOptions {
+  userId: string;
+  to: string[];
+  subject: string;
+  html: string;
+  attachments?: Array<{ name?: string; path?: string; content?: Buffer; contentType?: string }>;
+  replyTo?: string;
+  cc?: string[];
+  bcc?: string[];
 }
 
 type SmtpConfig = {
@@ -27,7 +39,7 @@ type SmtpConfig = {
   rejectUnauth?: boolean | null;
 };
 
-type UserWithSmtp = {
+export type UserWithSmtp = {
   id?: string;
   _id?: string;
   smtpHost?: string | null;
@@ -38,6 +50,15 @@ type UserWithSmtp = {
   smtpFromEmail?: string | null;
   smtpEncryption?: string | null;
   smtpRejectUnauth?: boolean | null;
+  smtpFallbackEnabled?: boolean;
+  smtpSecondaryHost?: string | null;
+  smtpSecondaryPort?: number | null;
+  smtpSecondaryUser?: string | null;
+  smtpSecondaryPassEnc?: string | null;
+  smtpSecondaryFromName?: string | null;
+  smtpSecondaryFromEmail?: string | null;
+  smtpSecondaryEncryption?: string | null;
+  smtpSecondaryRejectUnauth?: boolean | null;
 };
 
 function userToSmtpConfig(user: UserWithSmtp): SmtpConfig {
@@ -172,4 +193,307 @@ export async function normalizeAttachments(userId: string, attachments: SendPayl
     });
   }
   return normalized;
+}
+
+export function createSecondaryTransporter(user: UserWithSmtp) {
+  if (!user.smtpSecondaryHost) {
+    return null;
+  }
+  const pass = decryptText(user.smtpSecondaryPassEnc!);
+  return nodemailer.createTransport({
+    host: user.smtpSecondaryHost,
+    port: user.smtpSecondaryPort || undefined,
+    secure: user.smtpSecondaryEncryption === "SSL",
+    auth: {
+      user: user.smtpSecondaryUser || "",
+      pass: pass
+    },
+    tls: {
+      rejectUnauthorized: user.smtpSecondaryRejectUnauth !== false
+    }
+  });
+}
+
+export function isFallbackTriggerError(error: any): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (
+    message.includes("535") ||
+    message.includes("550") ||
+    message.includes("551") ||
+    message.includes("552") ||
+    message.includes("553") ||
+    message.includes("554") ||
+    message.includes("Invalid credentials") ||
+    message.includes("authentication") ||
+    message.includes("not found") ||
+    message.includes("does not exist")
+  ) {
+    return false;
+  }
+
+  if (
+    message.includes("421") ||
+    message.includes("450") ||
+    message.includes("451") ||
+    message.includes("452") ||
+    message.includes("rate limit") ||
+    message.includes("too many") ||
+    message.includes("quota exceeded") ||
+    message.includes("daily limit") ||
+    message.includes("sending limit") ||
+    message.includes("ECONNREFUSED") ||
+    message.includes("ETIMEDOUT") ||
+    message.includes("ENOTFOUND") ||
+    message.includes("connection timeout") ||
+    message.includes("Connection timeout") ||
+    message.includes("maxConnections")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+export function extractSmtpCode(errorMsg: string): string | null {
+  const match = errorMsg.match(/\b([45]\d{2})\b/);
+  return match ? match[1] : null;
+}
+
+export async function sendEmailWithFallback({
+  userId,
+  to,
+  subject,
+  html,
+  attachments,
+  replyTo,
+  cc,
+  bcc,
+  emailId,
+}: SendEmailOptions & { emailId?: string }): Promise<{
+  success: boolean;
+  usedFallback: boolean;
+  error?: string;
+  messageId?: string;
+  bothFailed?: boolean;
+  primaryError?: string;
+  fallbackError?: string;
+}> {
+  // Step 1: Fetch user with SMTP config
+  const user = await prisma.user.findUnique({
+    where: { id: userId }
+  });
+  if (!user) {
+    return {
+      success: false,
+      usedFallback: false,
+      error: "User not found"
+    };
+  }
+
+  // Step 2: Check global SMTP override
+  const systemConfig = await prisma.systemConfig.findFirst();
+  
+  let primaryConfig: SmtpConfig;
+  if (systemConfig?.globalSmtpActive) {
+    primaryConfig = {
+      host: systemConfig.smtpHost,
+      port: systemConfig.smtpPort,
+      username: systemConfig.smtpUsername,
+      passwordEnc: systemConfig.smtpPasswordEnc,
+      fromName: systemConfig.smtpFromName,
+      fromEmail: systemConfig.smtpFromEmail,
+      encryption: systemConfig.smtpEncryption,
+      rejectUnauth: systemConfig.smtpRejectUnauth
+    };
+    // No fallback when global override is active
+  } else {
+    primaryConfig = userToSmtpConfig(user);
+  }
+
+  const recipientEmailStr = to.join(", ");
+
+  // Step 3: Attempt primary SMTP
+  try {
+    const transporter = createTransporterFromConfig(primaryConfig);
+    const normalized = attachments ? await normalizeAttachments(userId, attachments) : undefined;
+    
+    const result = await transporter.sendMail({
+      from: `"${primaryConfig.fromName || primaryConfig.fromEmail}" <${primaryConfig.fromEmail}>`,
+      to,
+      subject,
+      html,
+      attachments: normalized?.map((attachment) => ({
+        filename: attachment.name,
+        path: attachment.path,
+        content: attachment.content,
+        contentType: attachment.contentType
+      })) ?? [],
+      replyTo,
+      cc,
+      bcc,
+    });
+
+    return {
+      success: true,
+      usedFallback: false,
+      messageId: result.messageId
+    };
+
+  } catch (primaryError) {
+    const errorMsg = primaryError instanceof Error
+      ? primaryError.message
+      : String(primaryError);
+
+    // Step 4: Decide if fallback should be tried
+    const shouldFallback = 
+      !systemConfig?.globalSmtpActive &&  
+      // no fallback on global override
+      user.smtpFallbackEnabled &&
+      // user has enabled fallback
+      isFallbackTriggerError(primaryError) &&
+      // error is fallback-worthy
+      user.smtpSecondaryHost != null;
+      // secondary SMTP is configured
+
+    if (!shouldFallback) {
+      // Log to SmtpFallbackLog (fallbackUsed: false)
+      await prisma.smtpFallbackLog.create({
+        data: {
+          userId,
+          emailId,
+          recipientEmail: recipientEmailStr,
+          primaryError: errorMsg,
+          primaryErrorCode: extractSmtpCode(errorMsg),
+          fallbackUsed: false,
+          fallbackSuccess: false,
+        }
+      });
+
+      return {
+        success: false,
+        usedFallback: false,
+        error: errorMsg
+      };
+    }
+
+    // Step 5: Attempt secondary SMTP
+    console.log(`[mailer] Primary SMTP failed: ${errorMsg}`);
+    console.log(`[mailer] Attempting fallback SMTP...`);
+
+    try {
+      const secondaryTransporter = createSecondaryTransporter(user);
+      if (!secondaryTransporter) {
+        throw new Error("Failed to create secondary transporter (missing config)");
+      }
+      
+      const secondaryConfig = {
+        fromName: user.smtpSecondaryFromName,
+        fromEmail: user.smtpSecondaryFromEmail
+      };
+
+      const normalized = attachments ? await normalizeAttachments(userId, attachments) : undefined;
+
+      const result = await secondaryTransporter.sendMail({
+        from: `"${secondaryConfig.fromName || secondaryConfig.fromEmail}" <${secondaryConfig.fromEmail}>`,
+        to,
+        subject,
+        html,
+        attachments: normalized?.map((attachment) => ({
+          filename: attachment.name,
+          path: attachment.path,
+          content: attachment.content,
+          contentType: attachment.contentType
+        })) ?? [],
+        replyTo,
+        cc,
+        bcc,
+      });
+
+      // Log successful fallback
+      await prisma.smtpFallbackLog.create({
+        data: {
+          userId,
+          emailId,
+          recipientEmail: recipientEmailStr,
+          primaryError: errorMsg,
+          primaryErrorCode: extractSmtpCode(errorMsg),
+          fallbackUsed: true,
+          fallbackSuccess: true,
+          fallbackAttemptAt: new Date(),
+        }
+      });
+
+      // Log audit events
+      await logAudit(
+        "smtp.fallback_used",
+        userId,
+        {
+          primaryError: errorMsg,
+          recipientEmail: recipientEmailStr,
+          primarySmtp: primaryConfig.host,
+          secondarySmtp: user.smtpSecondaryHost
+        }
+      );
+
+      await logAudit(
+        "smtp.fallback_success",
+        userId,
+        {
+          recipientEmail: recipientEmailStr,
+          secondarySmtp: user.smtpSecondaryHost
+        }
+      );
+
+      console.log(`[mailer] Fallback SMTP succeeded ✅`);
+
+      return {
+        success: true,
+        usedFallback: true,
+        messageId: result.messageId
+      };
+
+    } catch (fallbackError) {
+      const fallbackErrorMsg = 
+        fallbackError instanceof Error
+        ? fallbackError.message
+        : String(fallbackError);
+
+      // Log failed fallback
+      await prisma.smtpFallbackLog.create({
+        data: {
+          userId,
+          emailId,
+          recipientEmail: recipientEmailStr,
+          primaryError: errorMsg,
+          primaryErrorCode: extractSmtpCode(errorMsg),
+          fallbackUsed: true,
+          fallbackSuccess: false,
+          fallbackError: fallbackErrorMsg,
+          fallbackAttemptAt: new Date(),
+        }
+      });
+
+      await logAudit(
+        "smtp.fallback_failed",
+        userId,
+        {
+          recipientEmail: recipientEmailStr,
+          primaryError: errorMsg,
+          fallbackError: fallbackErrorMsg
+        }
+      );
+
+      console.error(`[mailer] Fallback SMTP also failed: ${fallbackErrorMsg}`);
+
+      return {
+        success: false,
+        usedFallback: true,
+        error: `Primary: ${errorMsg} | Fallback: ${fallbackErrorMsg}`,
+        bothFailed: true,
+        primaryError: errorMsg,
+        fallbackError: fallbackErrorMsg
+      };
+    }
+  }
 }
