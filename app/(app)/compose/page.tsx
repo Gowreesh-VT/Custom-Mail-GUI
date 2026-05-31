@@ -100,7 +100,7 @@ export default function ComposePage() {
               bodyHtml
             });
             setAutoSaveStatus("saved");
-          } catch (err) {
+          } catch {
             setAutoSaveStatus("error");
           }
         } else {
@@ -110,7 +110,7 @@ export default function ComposePage() {
               body: JSON.stringify({ to, cc, bcc, replyTo, subject, bodyHtml })
             });
             setAutoSaveStatus("saved");
-          } catch (err) {
+          } catch {
             setAutoSaveStatus("error");
           }
         }

@@ -36,7 +36,6 @@ export default function SettingsPage() {
 
   // PWA & Push Notification States
   const [isInstalled, setIsInstalled] = useState(false);
-  const [isInstallable, setIsInstallable] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
   const [testingPush, setTestingPush] = useState(false);
@@ -58,7 +57,6 @@ export default function SettingsPage() {
 
       const handleStatus = (e: any) => {
         if (e.detail?.installed) setIsInstalled(true);
-        if (e.detail?.installable) setIsInstallable(true);
       };
       window.addEventListener("pwa-status", handleStatus);
 
