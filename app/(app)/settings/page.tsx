@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Plus, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,6 +16,12 @@ import { cn } from "@/lib/utils";
 type PasswordErrors = Partial<Record<"currentPassword" | "newPassword" | "confirmPassword", string>>;
 
 export default function SettingsPage() {
+  const [profile, setProfile] = useState<any>({ name: "", email: "", phone: "", extraFields: {} });
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [newKey, setNewKey] = useState("");
+  const [newValue, setNewValue] = useState("");
+
   const [form, setForm] = useState<any>({ host: "", port: 587, username: "", password: "", fromName: "", fromEmail: "", encryption: "TLS", rejectUnauth: true });
   const [health, setHealth] = useState<any[]>([]);
   const [globalSmtpActive, setGlobalSmtpActive] = useState(false);
@@ -212,7 +218,13 @@ export default function SettingsPage() {
   async function loadSettings() {
     setLoading(true);
     setHealthLoading(true);
+    setLoadingProfile(true);
     try {
+      const profData = await apiFetch<any>("/api/user/profile");
+      if (profData.success) {
+        setProfile(profData.profile);
+      }
+
       const data = await apiFetch<any>("/api/smtp/settings");
       setForm({ ...data.smtpConfig, password: "" });
       setHealth(data.smtpHealthLog || []);
@@ -232,7 +244,64 @@ export default function SettingsPage() {
     } finally {
       setLoading(false);
       setHealthLoading(false);
+      setLoadingProfile(false);
     }
+  }
+
+  async function saveProfile() {
+    try {
+      setSavingProfile(true);
+      await apiFetch("/api/user/profile", {
+        method: "PUT",
+        body: JSON.stringify(profile)
+      });
+      toast.success("Profile saved successfully");
+      // Reload window to update the sidebar profile info immediately
+      window.location.reload();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to update profile");
+    } finally {
+      setSavingProfile(false);
+    }
+  }
+
+  function addExtraField() {
+    if (!newKey.trim()) {
+      toast.error("Field name is required");
+      return;
+    }
+    const sanitizedKey = newKey.trim();
+    if (profile.extraFields?.[sanitizedKey]) {
+      toast.error("Field already exists");
+      return;
+    }
+    setProfile((current: any) => ({
+      ...current,
+      extraFields: {
+        ...(current.extraFields || {}),
+        [sanitizedKey]: newValue
+      }
+    }));
+    setNewKey("");
+    setNewValue("");
+  }
+
+  function removeExtraField(key: string) {
+    setProfile((current: any) => {
+      const updated = { ...(current.extraFields || {}) };
+      delete updated[key];
+      return { ...current, extraFields: updated };
+    });
+  }
+
+  function setExtraFieldValue(key: string, val: string) {
+    setProfile((current: any) => ({
+      ...current,
+      extraFields: {
+        ...(current.extraFields || {}),
+        [key]: val
+      }
+    }));
   }
 
   function set(key: string, value: any) {
@@ -353,7 +422,90 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-5">
-      <div><h1 className="text-2xl font-semibold tracking-normal">SMTP Settings</h1><p className="text-sm text-muted-foreground">Credentials are encrypted and scoped to your account.</p></div>
+      <div><h1 className="text-2xl font-semibold tracking-normal">Account Settings</h1><p className="text-sm text-muted-foreground">Manage your profile, credentials, and app preferences.</p></div>
+      
+      {loadingProfile ? (
+        <Card>
+          <CardHeader><CardTitle>User Profile</CardTitle></CardHeader>
+          <CardContent className="space-y-4">
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+            <Skeleton className="h-10 w-full rounded-md" />
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> User Profile</CardTitle>
+            <CardDescription>Update your personal information and custom details.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label>Name</Label>
+                <Input value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input type="email" value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+              </div>
+              <div className="space-y-2 md:col-span-2">
+                <Label>Phone</Label>
+                <Input type="tel" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="space-y-3 pt-2 border-t">
+              <Label className="text-sm font-semibold">Extra Custom Fields</Label>
+              
+              {/* List of existing custom fields */}
+              {Object.keys(profile.extraFields || {}).length > 0 && (
+                <div className="space-y-3">
+                  {Object.entries(profile.extraFields || {}).map(([key, val]) => (
+                    <div key={key} className="flex gap-2 items-center">
+                      <div className="w-1/3 truncate font-mono text-xs bg-muted p-2.5 rounded border">{key}</div>
+                      <Input 
+                        className="flex-1" 
+                        value={String(val)} 
+                        onChange={(e) => setExtraFieldValue(key, e.target.value)} 
+                      />
+                      <Button variant="ghost" size="icon" onClick={() => removeExtraField(key)} className="text-red-500 hover:text-red-600 hover:bg-red-500/10 shrink-0">
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Add field inline form */}
+              <div className="flex gap-2 items-center pt-1">
+                <Input 
+                  placeholder="New field name (e.g. Company)" 
+                  value={newKey} 
+                  onChange={(e) => setNewKey(e.target.value)} 
+                  className="w-1/3"
+                />
+                <Input 
+                  placeholder="Field value" 
+                  value={newValue} 
+                  onChange={(e) => setNewValue(e.target.value)} 
+                  className="flex-1"
+                />
+                <Button variant="outline" size="icon" onClick={addExtraField} className="shrink-0">
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <Button onClick={saveProfile} disabled={savingProfile}>
+                {savingProfile ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : "Save Profile"}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {loading ? (
         <Card>
           <CardHeader><CardTitle>Connection</CardTitle></CardHeader>

@@ -23,7 +23,7 @@ export default function MonitorPage() {
   const [events, setEvents] = useState<any[]>([]);
   const [paused, setPaused] = useState(false);
   const [mounted, setMounted] = useState(false);
-  const bottom = useRef<HTMLDivElement>(null);
+  const activityFeedRef = useRef<HTMLDivElement>(null);
 
   const [fallbackEnabled, setFallbackEnabled] = useState(false);
   const [fallbackLogs, setFallbackLogs] = useState<any[]>([]);
@@ -67,7 +67,11 @@ export default function MonitorPage() {
     source.onerror = () => setEvents((current) => [{ type: "info", message: "Reconnecting...", at: new Date().toISOString() }, ...current].slice(0, 100));
     return () => source.close();
   }, []);
-  useEffect(() => { if (!paused) bottom.current?.scrollIntoView({ behavior: "smooth" }); }, [events, paused]);
+  useEffect(() => {
+    if (!paused && activityFeedRef.current) {
+      activityFeedRef.current.scrollTop = activityFeedRef.current.scrollHeight;
+    }
+  }, [events, paused]);
 
   const lastFailed = useMemo(() => failed[0], [failed]);
   const failedPageCount = Math.max(1, Math.ceil(failed.length / failedPageSize));
@@ -208,7 +212,7 @@ export default function MonitorPage() {
       <div className="grid gap-5 xl:grid-cols-2">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between"><CardTitle>Activity Feed</CardTitle><Button variant="outline" size="sm" onClick={() => setPaused(!paused)}>{paused ? "Resume" : "Pause"}</Button></CardHeader>
-          <CardContent className="h-80 overflow-auto rounded-md border p-3 text-sm">
+          <CardContent ref={activityFeedRef} className="h-80 overflow-auto rounded-md border p-3 text-sm">
             {events.map((event, index) => {
               const dateStr = new Date(event.at).toLocaleTimeString();
               if (event.type === "smtp.fallback_used") {
@@ -261,7 +265,6 @@ export default function MonitorPage() {
                 </div>
               );
             })}
-            <div ref={bottom} />
           </CardContent>
         </Card>
         <Card>
