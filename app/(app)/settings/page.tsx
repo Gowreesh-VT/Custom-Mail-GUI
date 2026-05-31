@@ -28,6 +28,15 @@ export default function SettingsPage() {
   const [testing, setTesting] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
 
+  const [secondaryForm, setSecondaryForm] = useState<any>({ enabled: false, host: "", port: 587, username: "", password: "", fromName: "", fromEmail: "", encryption: "TLS", rejectUnauth: true, passwordSet: false });
+  const [lastFallbackEvent, setLastFallbackEvent] = useState<any>(null);
+  const [savingSecondary, setSavingSecondary] = useState(false);
+  const [testingSecondary, setTestingSecondary] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
+
+  const primaryHealth = useMemo(() => health.filter((h) => h.smtpType === "primary" || !h.smtpType), [health]);
+  const secondaryHealth = useMemo(() => health.filter((h) => h.smtpType === "secondary"), [health]);
+
   useEffect(() => {
     loadSettings();
   }, []);
@@ -40,6 +49,16 @@ export default function SettingsPage() {
       setForm({ ...data.smtpConfig, password: "" });
       setHealth(data.smtpHealthLog || []);
       setGlobalSmtpActive(Boolean(data.globalSmtpActive));
+
+      const secData = await apiFetch<any>("/api/smtp/settings/secondary");
+      setSecondaryForm({ ...secData, password: "" });
+
+      const logsData = await apiFetch<any>("/api/smtp/fallback-logs");
+      if (logsData.logs && logsData.logs.length > 0) {
+        setLastFallbackEvent(logsData.logs[0]);
+      } else {
+        setLastFallbackEvent(null);
+      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -76,6 +95,56 @@ export default function SettingsPage() {
     } finally {
       setTesting(false);
     }
+  }
+
+  function setSec(key: string, value: any) {
+    setSecondaryForm((current: any) => ({ ...current, [key]: value }));
+  }
+
+  async function saveSecondary() {
+    try {
+      setSavingSecondary(true);
+      await apiFetch("/api/smtp/settings/secondary", {
+        method: "PUT",
+        body: JSON.stringify(secondaryForm)
+      });
+      toast.success("Fallback SMTP settings saved");
+      await loadSettings();
+    } catch (error: any) {
+      toast.error(error.message);
+    } finally {
+      setSavingSecondary(false);
+    }
+  }
+
+  async function testSecondary() {
+    try {
+      setTestingSecondary(true);
+      const data = await apiFetch<any>("/api/smtp/test/secondary", {
+        method: "POST",
+        body: JSON.stringify(secondaryForm)
+      });
+      if (data.success) {
+        toast.success(`Connected in ${data.latencyMs}ms`);
+      } else {
+        toast.error(data.error || "Connection test failed");
+      }
+      await loadSettings();
+    } catch (error: any) {
+      toast.error(error.message);
+      await loadSettings().catch(() => {});
+    } finally {
+      setTestingSecondary(false);
+    }
+  }
+
+  function formatLastUsed(event: any) {
+    if (!event) return "Never used (primary is healthy)";
+    const date = new Date(event.createdAt);
+    const diffMs = Date.now() - date.getTime();
+    const minutes = Math.round(diffMs / 60000);
+    const relative = minutes < 1 ? "just now" : minutes < 60 ? `${minutes} minutes ago` : minutes < 1440 ? `${Math.round(minutes / 60)} hours ago` : `${Math.round(minutes / 1440)} days ago`;
+    return `Last used: ${relative} (primary error: ${event.primaryError})`;
   }
 
   const strength = useMemo(() => passwordStrength(passwords.newPassword), [passwords.newPassword]);
@@ -154,6 +223,173 @@ export default function SettingsPage() {
         </CardContent>
       </Card>}
 
+      {!loading && !globalSmtpActive && (
+        <Card className="transition-all duration-300">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  🔄 Fallback SMTP
+                </CardTitle>
+                <CardDescription>
+                  Configure a backup SMTP server in case primary limits or failures occur.
+                </CardDescription>
+              </div>
+              <Switch
+                checked={secondaryForm.enabled}
+                onCheckedChange={(checked) => {
+                  setSecondaryForm((c: any) => ({ ...c, enabled: checked }));
+                }}
+              />
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              If your primary SMTP fails due to rate limits or connection errors, emails will
+              automatically retry using this backup SMTP server.
+            </p>
+
+            <div className="rounded-md bg-muted/40 p-3 text-xs flex items-center gap-2">
+              <span className={cn("h-2 w-2 rounded-full", lastFallbackEvent ? "bg-amber-500 animate-pulse" : "bg-emerald-500")} />
+              <span className="font-medium text-muted-foreground">
+                {formatLastUsed(lastFallbackEvent)}
+              </span>
+            </div>
+
+            {!secondaryForm.enabled ? (
+              <div className="flex flex-col items-center justify-center rounded-md border border-dashed p-6 text-center text-muted-foreground bg-muted/20">
+                <span className="text-2xl mb-1">🔒</span>
+                <p className="text-sm font-medium">Secondary SMTP configuration locked</p>
+                <p className="text-xs">Enable the toggle to configure a fallback SMTP server</p>
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2 pt-2 transition-all duration-300">
+                <div className="space-y-2">
+                  <Label>Host</Label>
+                  <Input
+                    value={secondaryForm.host || ""}
+                    onChange={(e) => setSec("host", e.target.value)}
+                    placeholder="smtp.backup.com"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Port</Label>
+                  <Input
+                    type="number"
+                    value={secondaryForm.port || ""}
+                    onChange={(e) => setSec("port", Number(e.target.value))}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Username</Label>
+                  <Input
+                    value={secondaryForm.username || ""}
+                    onChange={(e) => setSec("username", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Password</Label>
+                  <div className="relative">
+                    <Input
+                      type={visible.secondaryPassword ? "text" : "password"}
+                      value={secondaryForm.password || ""}
+                      placeholder={secondaryForm.passwordSet ? "Saved password" : ""}
+                      onChange={(e) => setSec("password", e.target.value)}
+                      className="pr-10"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="absolute right-0 top-0 h-10 w-10"
+                      onClick={() => setVisible((c) => ({ ...c, secondaryPassword: !c.secondaryPassword }))}
+                    >
+                      {visible.secondaryPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                    </Button>
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label>From Name</Label>
+                  <Input
+                    value={secondaryForm.fromName || ""}
+                    onChange={(e) => setSec("fromName", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>From Email</Label>
+                  <Input
+                    type="email"
+                    value={secondaryForm.fromEmail || ""}
+                    onChange={(e) => setSec("fromEmail", e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Encryption</Label>
+                  <Select
+                    value={secondaryForm.encryption || "TLS"}
+                    onValueChange={(v) => setSec("encryption", v)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="TLS">TLS</SelectItem>
+                      <SelectItem value="SSL">SSL</SelectItem>
+                      <SelectItem value="NONE">None</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex items-center justify-between rounded-md border p-3">
+                  <Label>Reject Unauthorized</Label>
+                  <Switch
+                    checked={secondaryForm.rejectUnauth !== false}
+                    onCheckedChange={(v) => setSec("rejectUnauth", v)}
+                  />
+                </div>
+                <div className="flex gap-2 md:col-span-2">
+                  <Button onClick={saveSecondary} disabled={savingSecondary}>
+                    {savingSecondary ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : "Save Fallback SMTP"}
+                  </Button>
+                  <Button variant="outline" onClick={testSecondary} disabled={testingSecondary}>
+                    {testingSecondary ? <><Loader2 className="h-4 w-4 animate-spin" />Testing...</> : "Test Fallback Connection"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="p-0 h-auto hover:bg-transparent text-xs text-muted-foreground flex items-center gap-1"
+                onClick={() => setShowInfo(!showInfo)}
+              >
+                <span>ℹ️ When does fallback trigger?</span>
+                <span className="text-[10px]">{showInfo ? "▲" : "▼"}</span>
+              </Button>
+              {showInfo && (
+                <div className="mt-2 rounded-md bg-muted/30 border p-3 text-xs space-y-2 text-muted-foreground">
+                  <p className="font-semibold text-foreground">Fallback activates when primary SMTP returns:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>Rate limit errors (e.g. 421, 452)</li>
+                    <li>Connection timeout</li>
+                    <li>Connection refused</li>
+                    <li>Daily/hourly send limit reached</li>
+                  </ul>
+                  <p className="font-semibold text-foreground pt-1">Fallback does NOT activate for:</p>
+                  <ul className="list-disc pl-4 space-y-0.5">
+                    <li>Wrong password (535)</li>
+                    <li>Invalid recipient (550)</li>
+                    <li>Authentication errors</li>
+                  </ul>
+                  <p className="text-[10px] italic pt-1">These indicate configuration or routing issues that a backup server cannot fix.</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader><CardTitle>Change Password</CardTitle><CardDescription>Update your account password without changing active sessions.</CardDescription></CardHeader>
         <CardContent className="space-y-4">
@@ -176,39 +412,75 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>SMTP Health History</CardTitle></CardHeader>
-        <CardContent>
-          {healthLoading ? (
-            <div className="space-y-2 max-h-[280px]">
-              {Array.from({ length: 5 }).map((_, index) => (
-                <div key={index} className="flex items-center gap-3 py-2">
-                  <Skeleton className="h-3 w-3 rounded-full" />
-                  <Skeleton className="h-4 w-20" />
-                  <Skeleton className="h-4 w-12" />
-                  <Skeleton className="h-4 w-32" />
-                </div>
-              ))}
-            </div>
-          ) : health.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Now&quot; to check your connection.</p>
-          ) : (
-            <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
-              {[...health].reverse().slice(0, 10).map((item, index) => (
-                <div key={index} className="rounded-md border p-3">
-                  <div className="flex flex-wrap items-center gap-3 text-sm">
-                    <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
-                    <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
-                    <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
-                    <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
+      <div className="grid gap-5 md:grid-cols-2">
+        <Card>
+          <CardHeader><CardTitle>Primary SMTP Health History</CardTitle></CardHeader>
+          <CardContent>
+            {healthLoading ? (
+              <div className="space-y-2 max-h-[280px]">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="flex items-center gap-3 py-2">
+                    <Skeleton className="h-3 w-3 rounded-full" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-12" />
+                    <Skeleton className="h-4 w-32" />
                   </div>
-                  {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                ))}
+              </div>
+            ) : primaryHealth.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Connection&quot; above to check primary SMTP.</p>
+            ) : (
+              <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
+                {[...primaryHealth].reverse().slice(0, 10).map((item, index) => (
+                  <div key={index} className="rounded-md border p-3">
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
+                      <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
+                      <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
+                      <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
+                    </div>
+                    {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader><CardTitle>Fallback SMTP Health History</CardTitle></CardHeader>
+          <CardContent>
+            {healthLoading ? (
+              <div className="space-y-2 max-h-[280px]">
+                {Array.from({ length: 3 }).map((_, index) => (
+                  <div key={index} className="flex items-center gap-3 py-2">
+                    <Skeleton className="h-3 w-3 rounded-full" />
+                    <Skeleton className="h-4 w-20" />
+                    <Skeleton className="h-4 w-12" />
+                    <Skeleton className="h-4 w-32" />
+                  </div>
+                ))}
+              </div>
+            ) : secondaryHealth.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Fallback Connection&quot; to check backup SMTP.</p>
+            ) : (
+              <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
+                {[...secondaryHealth].reverse().slice(0, 10).map((item, index) => (
+                  <div key={index} className="rounded-md border p-3">
+                    <div className="flex flex-wrap items-center gap-3 text-sm">
+                      <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
+                      <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
+                      <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
+                      <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
+                    </div>
+                    {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

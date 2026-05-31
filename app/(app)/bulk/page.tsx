@@ -417,7 +417,7 @@ export default function BulkPage() {
     let certs = 0;
     let failedCerts = 0;
     let failedQrs = 0;
-    const failureDetails: Array<{ email: string; reason: string; type: string }> = [];
+    const failureDetails: Array<{ email: string; reason: string; type: string; bothFailed?: boolean; primaryError?: string; fallbackError?: string }> = [];
 
     logs.forEach((log) => {
       if (log.type === "sent") {
@@ -427,7 +427,10 @@ export default function BulkPage() {
         failureDetails.push({
           email: log.email || "Unknown Recipient",
           reason: log.error || "Unknown SMTP delivery failure",
-          type: "Email Delivery"
+          type: "Email Delivery",
+          bothFailed: log.bothFailed,
+          primaryError: log.primaryError,
+          fallbackError: log.fallbackError
         });
       } else if (log.type === "certificate_error") {
         failedCerts++;
@@ -725,9 +728,25 @@ export default function BulkPage() {
                                 {failure.type}
                               </Badge>
                             </div>
-                            <p className="text-xs font-mono text-destructive bg-destructive/5 border border-destructive/10 rounded px-2 py-1 leading-relaxed break-all">
-                              {failure.reason}
-                            </p>
+                            {failure.bothFailed ? (
+                              <div className="mt-1 space-y-1.5 font-sans">
+                                <div className="text-[10px] font-semibold uppercase text-zinc-500 tracking-wider">Dual SMTP Connection Failures</div>
+                                <div className="grid gap-2 sm:grid-cols-2">
+                                  <div className="rounded border border-red-500/10 bg-red-500/5 p-2 text-xs">
+                                    <div className="font-semibold text-red-500 mb-0.5">Primary SMTP Error:</div>
+                                    <span className="font-mono leading-relaxed text-destructive break-all">{failure.primaryError}</span>
+                                  </div>
+                                  <div className="rounded border border-orange-500/10 bg-orange-500/5 p-2 text-xs">
+                                    <div className="font-semibold text-orange-500 mb-0.5">Fallback SMTP Error:</div>
+                                    <span className="font-mono leading-relaxed text-orange-600 dark:text-orange-400 break-all">{failure.fallbackError}</span>
+                                  </div>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs font-mono text-destructive bg-destructive/5 border border-destructive/10 rounded px-2 py-1 leading-relaxed break-all">
+                                {failure.reason}
+                              </p>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -821,25 +840,33 @@ export default function BulkPage() {
                     ) : (
                       logs.map((log, index) => {
                         const isFailed = log.type === "failed" || log.type === "certificate_error" || log.type === "qr_error";
+                        const isBothFailed = log.type === "failed" && log.bothFailed;
                         return (
-                          <div key={index} className="py-2 first:pt-0 last:pb-0 space-y-1">
+                          <div key={index} className={`py-2 first:pt-0 last:pb-0 space-y-1 ${isBothFailed ? "bg-red-500/10 border border-red-500/20 px-2 rounded-md my-1" : ""}`}>
                             <div className="flex items-center justify-between gap-2">
                               <span className="truncate text-zinc-300 font-semibold">{log.email || log.recipient || "System Log"}</span>
                               <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${
-                                isFailed 
-                                  ? "bg-red-500/10 text-red-400 border border-red-500/20" 
-                                  : log.type === "sent" 
-                                    ? "bg-green-500/10 text-green-400 border border-green-500/20" 
-                                    : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                isBothFailed
+                                  ? "bg-red-600/35 text-red-100 border border-red-500/50"
+                                  : isFailed 
+                                    ? "bg-red-500/10 text-red-400 border border-red-500/20" 
+                                    : log.type === "sent" 
+                                      ? "bg-green-500/10 text-green-400 border border-green-500/20" 
+                                      : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
                               }`}>
-                                {log.type}
+                                {isBothFailed ? "❌❌ Both Failed" : log.type}
                               </span>
                             </div>
-                            {log.error && (
+                            {isBothFailed ? (
+                              <div className="mt-1 space-y-1 pl-1 border-l-2 border-red-500/50 leading-normal text-[10px] text-red-300 font-sans">
+                                <div><span className="font-semibold text-red-400">Primary:</span> {log.primaryError}</div>
+                                <div><span className="font-semibold text-orange-400">Fallback:</span> {log.fallbackError}</div>
+                              </div>
+                            ) : log.error ? (
                               <div className="text-red-400 whitespace-pre-wrap pl-1 border-l-2 border-red-500/50 mt-1 leading-normal font-sans">
                                 Reason: {log.error}
                               </div>
-                            )}
+                            ) : null}
                             {log.total && <div className="text-zinc-500">Initiated total recipients: {log.total}</div>}
                           </div>
                         );

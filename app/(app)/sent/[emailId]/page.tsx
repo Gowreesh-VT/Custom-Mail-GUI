@@ -32,6 +32,7 @@ type EmailAnalyticsData = {
     clickCount: number;
     firstOpenedAt: string | null;
     lastOpenedAt: string | null;
+    usedFallbackSmtp?: boolean;
   };
   events: Array<{
     id: string;
@@ -160,6 +161,12 @@ export default function SingleEmailPage({ params }: Props) {
           <span className="text-xs text-muted-foreground font-mono">ID: {email.id}</span>
         </div>
       </div>
+
+      {email.usedFallbackSmtp && (
+        <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 text-amber-600 dark:text-amber-400 p-4 text-sm font-medium flex items-center gap-2">
+          <span>🔄 This email was sent using the fallback SMTP server because the primary SMTP failed.</span>
+        </div>
+      )}
 
       {/* Tabs */}
       <div className="flex border-b">

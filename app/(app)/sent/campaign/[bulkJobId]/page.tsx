@@ -58,6 +58,11 @@ type CampaignAnalyticsData = {
     clickCount: number;
     sentAt: string;
     firstOpenedAt: string | null;
+    usedFallbackSmtp?: boolean;
+    bothFailed?: boolean;
+    primaryError?: string | null;
+    fallbackError?: string | null;
+    errorMsg?: string | null;
   }>;
 };
 
@@ -386,12 +391,30 @@ export default function CampaignAnalyticsPage({ params }: Props) {
             </TableHeader>
             <TableBody>
               {filteredRecipients.map((rec) => (
-                <TableRow key={rec.id}>
-                  <TableCell className="font-medium text-sm">{rec.email}</TableCell>
+                <TableRow key={rec.id} className={rec.bothFailed ? "bg-red-500/5 hover:bg-red-500/10" : ""}>
+                  <TableCell className="font-medium text-sm">
+                    <div>{rec.email}</div>
+                    {rec.bothFailed && (
+                      <div className="mt-1.5 space-y-1 rounded border border-red-500/10 bg-red-500/5 p-2.5 text-[10px] font-mono leading-normal text-red-600 dark:text-red-400 max-w-md">
+                        <div><strong className="text-red-500">Primary SMTP Error:</strong> {rec.primaryError}</div>
+                        <div><strong className="text-orange-500">Fallback SMTP Error:</strong> {rec.fallbackError}</div>
+                      </div>
+                    )}
+                    {!rec.bothFailed && rec.status === "failed" && rec.errorMsg && (
+                      <div className="mt-1 text-[10px] font-mono text-destructive">
+                        Reason: {rec.errorMsg}
+                      </div>
+                    )}
+                  </TableCell>
                   <TableCell>
-                    <Badge variant={rec.status === "sent" ? "sent" : "failed"} className="text-[10px] py-0.5">
-                      {rec.status}
-                    </Badge>
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant={rec.status === "sent" ? "sent" : "failed"} className="text-[10px] py-0.5">
+                        {rec.bothFailed ? "❌❌ failed" : rec.status}
+                      </Badge>
+                      {rec.usedFallbackSmtp && (
+                        <span className="text-sm cursor-help" title="Sent via fallback SMTP — primary failed, secondary was used">🔄</span>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell className="text-right font-mono font-medium">{rec.openCount}</TableCell>
                   <TableCell className="text-right font-mono font-medium">{rec.clickCount}</TableCell>
