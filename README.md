@@ -87,6 +87,14 @@ CRON_SECRET=long-random-secret
 - `npm run typecheck` — Run TypeScript checks
 - `npm run lint` — Run ESLint
 
+After deploying the SMTP pool update run:
+
+```bash
+npx ts-node scripts/migrate-smtp-to-pool.ts
+```
+
+This migrates existing primary and secondary SMTP configs into the new pool system.
+
 ---
 
 ## Bulk CSV Sending
