@@ -41,7 +41,7 @@ export function PwaUpdatePrompt() {
                   tag: "app-update",
                   requireInteraction: true
                 });
-              } catch (e) {
+              } catch {
                 new Notification("Update Available", {
                   body: "A new version of Custom Mail is ready. Tap to install.",
                   icon: "/icons/icon-192.png",

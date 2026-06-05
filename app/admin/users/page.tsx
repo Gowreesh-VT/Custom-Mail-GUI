@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
+import { Eye, EyeOff } from "lucide-react";
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<any[]>([]);
@@ -38,11 +39,54 @@ export default function AdminUsersPage() {
 }
 
 function ResetPassword({ id }: { id: string }) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+
   async function reset(formData: FormData) {
     const password = String(formData.get("password"));
     if (password !== String(formData.get("confirm"))) { toast.error("Passwords do not match"); return; }
     await apiFetch(`/api/admin/users/${id}/reset-password`, { method: "POST", body: JSON.stringify({ password, forcePasswordReset: formData.get("force") === "on" }) });
     toast.success("Password reset");
   }
-  return <Dialog><DialogTrigger asChild><Button size="sm" variant="outline">Reset Password</Button></DialogTrigger><DialogContent><DialogHeader><DialogTitle>Reset Password</DialogTitle></DialogHeader><form action={reset} className="space-y-3"><Input name="password" type="password" required minLength={8} /><Input name="confirm" type="password" required /><label className="flex items-center gap-2 text-sm"><Switch name="force" /> Force password change on next login</label><Button>Reset</Button></form></DialogContent></Dialog>;
+
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline">Reset Password</Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Reset Password</DialogTitle>
+        </DialogHeader>
+        <form action={reset} className="space-y-3">
+          <div className="relative">
+            <Input name="password" type={showPassword ? "text" : "password"} placeholder="New Password" required minLength={8} className="pr-10" />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowPassword(!showPassword)}
+            >
+              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+
+          <div className="relative">
+            <Input name="confirm" type={showConfirm ? "text" : "password"} placeholder="Confirm Password" required className="pr-10" />
+            <button
+              type="button"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setShowConfirm(!showConfirm)}
+            >
+              {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </button>
+          </div>
+
+          <label className="flex items-center gap-2 text-sm">
+            <Switch name="force" /> Force password change on next login
+          </label>
+          <Button>Reset</Button>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
 }

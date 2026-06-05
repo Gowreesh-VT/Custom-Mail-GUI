@@ -33,6 +33,7 @@ export async function GET(req: NextRequest) {
       smtpFallbackEnabled: true,
       smtpSecondaryHost: true,
       smtpSecondaryPort: true,
+      adminSmtpLocked: true,
       smtpHealthLogs: {
         orderBy: { testedAt: "desc" },
         take: 1,
@@ -42,7 +43,8 @@ export async function GET(req: NextRequest) {
         orderBy: { createdAt: "desc" },
         take: 1,
         select: { createdAt: true }
-      }
+      },
+      smtpPool: true
     },
     orderBy: { createdAt: "desc" }
   });
@@ -64,18 +66,26 @@ export async function GET(req: NextRequest) {
           }
         : {}
     },
-    users: users.map((user) => ({
-      _id: user.id,
-      name: user.name,
-      email: user.email,
-      host: user.smtpHost || "",
-      lastTested: user.smtpHealthLogs[0]?.testedAt,
-      status: user.smtpHealthLogs[0]?.success,
-      fallbackEnabled: user.smtpFallbackEnabled,
-      secondaryHost: user.smtpSecondaryHost,
-      secondaryPort: user.smtpSecondaryPort,
-      lastFallbackTriggered: user.smtpFallbackLogs[0]?.createdAt
-    }))
+    users: users.map((user) => {
+      const adminAssigned = user.smtpPool.filter((smtp) => smtp.isAdminAssigned && smtp.isActive);
+      const primary = adminAssigned.find((smtp) => smtp.isPrimary)
+        ?? user.smtpPool.find((smtp) => !smtp.isAdminAssigned && smtp.isPrimary && smtp.isActive);
+      return {
+        _id: user.id,
+        name: user.name,
+        email: user.email,
+        host: primary?.host || user.smtpHost || "",
+        lockStatus: user.adminSmtpLocked ? "Locked" : "Unlocked",
+        assignedCount: adminAssigned.length,
+        primarySmtp: primary ? `${primary.label} (${primary.host}:${primary.port})` : user.smtpHost || "",
+        lastTested: primary?.lastTestedAt || user.smtpHealthLogs[0]?.testedAt,
+        status: primary?.lastTestSuccess ?? user.smtpHealthLogs[0]?.success ?? null,
+        fallbackEnabled: user.smtpFallbackEnabled || user.smtpPool.some((smtp) => smtp.isFallback && smtp.isActive),
+        secondaryHost: user.smtpSecondaryHost,
+        secondaryPort: user.smtpSecondaryPort,
+        lastFallbackTriggered: user.smtpFallbackLogs[0]?.createdAt
+      };
+    })
   });
 }
 
