@@ -23,7 +23,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     where: { id },
     include: {
       smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 10 },
-      smtpFallbackLogs: { orderBy: { createdAt: "desc" }, take: 1 }
+      smtpFallbackLogs: { orderBy: { createdAt: "desc" }, take: 1 },
+      smtpPool: { orderBy: [{ isAdminAssigned: "desc" }, { isPrimary: "desc" }, { isFallback: "desc" }, { createdAt: "desc" }] }
     }
   });
   if (!user) return jsonError("User not found", 404);

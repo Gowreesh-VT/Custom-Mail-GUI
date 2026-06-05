@@ -24,11 +24,34 @@ export async function GET(req: NextRequest) {
       ...(filter === "admin" ? { role: "admin" } : {})
     },
     orderBy: { createdAt: "desc" },
-    include: { smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 10 } }
+    include: {
+      smtpHealthLogs: { orderBy: { testedAt: "desc" }, take: 10 },
+      smtpPool: true
+    }
   });
   const counts = await prisma.email.groupBy({ by: ["userId"], where: { status: "sent" }, _count: { _all: true } });
   const sentMap = new Map(counts.map((item) => [item.userId, item._count._all]));
-  return Response.json({ success: true, users: users.map((user) => ({ ...userRecord(user), passwordHash: undefined, smtpPasswordEnc: undefined, sentTotal: sentMap.get(user.id) || 0 })) });
+  return Response.json({
+    success: true,
+    users: users.map((user) => {
+      const adminPrimary = user.smtpPool.find((smtp) => smtp.isAdminAssigned && smtp.isPrimary && smtp.isActive);
+      const ownPrimary = user.smtpPool.find((smtp) => !smtp.isAdminAssigned && smtp.isPrimary && smtp.isActive);
+      const primary = user.adminSmtpLocked ? adminPrimary : ownPrimary;
+      const hasOwnSmtp = user.smtpPool.some((smtp) => !smtp.isAdminAssigned && smtp.isActive) || Boolean(user.smtpHost);
+      return {
+        ...userRecord(user),
+        passwordHash: undefined,
+        smtpPasswordEnc: undefined,
+        sentTotal: sentMap.get(user.id) || 0,
+        smtpSummary: {
+          lockStatus: user.adminSmtpLocked ? "locked" : "unlocked",
+          label: user.adminSmtpLocked && adminPrimary ? "Locked" : hasOwnSmtp ? "Own SMTP" : "No SMTP",
+          status: primary?.lastTestSuccess ?? null,
+          hasConfig: Boolean(primary || hasOwnSmtp)
+        }
+      };
+    })
+  });
 }
 
 export async function POST(req: NextRequest) {
@@ -46,10 +69,18 @@ export async function POST(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const { user: admin } = await requireAdmin(req);
-  const id = new URL(req.url).searchParams.get("id");
-  if (!id) return jsonError("User id is required", 400);
-  await prisma.user.delete({ where: { id } });
-  await logAudit("admin.user_deleted", String(admin._id), {}, id, req);
-  return Response.json({ success: true });
+  try {
+    const { user: admin } = await requireAdmin(req);
+    const id = new URL(req.url).searchParams.get("id");
+    if (!id) return jsonError("User id is required", 400);
+
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) return jsonError("User not found", 404, "USER_NOT_FOUND");
+
+    await prisma.user.delete({ where: { id } });
+    await logAudit("admin.user_deleted", String(admin._id), {}, id, req);
+    return Response.json({ success: true });
+  } catch (error: any) {
+    return jsonError(error.message || "Unable to delete user", 400);
+  }
 }
