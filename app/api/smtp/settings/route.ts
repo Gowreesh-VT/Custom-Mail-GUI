@@ -23,6 +23,10 @@ export async function GET(req: NextRequest) {
   try {
     const { user } = await requireUser(req);
     const config = user.smtpConfig || {};
+    const adminPrimary = await prisma.smtpPool.findFirst({
+      where: { userId: String(user._id), isAdminAssigned: true, isPrimary: true, isActive: true },
+      select: { lastTestSuccess: true, lastTestedAt: true }
+    });
     return Response.json({
       success: true,
       smtpConfig: {
@@ -36,7 +40,15 @@ export async function GET(req: NextRequest) {
         hasPassword: Boolean(config.passwordEnc)
       },
       smtpHealthLog: user.smtpHealthLog || [],
-      globalSmtpActive: await isGlobalSmtpActive()
+      globalSmtpActive: await isGlobalSmtpActive(),
+      adminSmtpLocked: Boolean(user.adminSmtpLocked),
+      adminSmtpStatus: adminPrimary
+        ? {
+            active: true,
+            lastTestSuccess: adminPrimary.lastTestSuccess,
+            lastTestedAt: adminPrimary.lastTestedAt
+          }
+        : { active: false, lastTestSuccess: false, lastTestedAt: null }
     });
   } catch (error: any) {
     console.error("GET /api/smtp/settings error:", error);

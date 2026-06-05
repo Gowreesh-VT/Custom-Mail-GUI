@@ -30,9 +30,17 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const { user } = await requireAdmin(req);
-  const { id } = await params;
-  await prisma.announcement.delete({ where: { id } });
-  await logAudit("admin.announcement_deleted", String(user._id), {}, id, req);
-  return Response.json({ success: true });
+  try {
+    const { user } = await requireAdmin(req);
+    const { id } = await params;
+
+    const announcement = await prisma.announcement.findUnique({ where: { id } });
+    if (!announcement) return jsonError("Announcement not found", 404, "ANNOUNCEMENT_NOT_FOUND");
+
+    await prisma.announcement.delete({ where: { id } });
+    await logAudit("admin.announcement_deleted", String(user._id), {}, id, req);
+    return Response.json({ success: true });
+  } catch (error: any) {
+    return jsonError(error.message || "Unable to delete announcement", 400);
+  }
 }

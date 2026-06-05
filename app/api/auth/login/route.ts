@@ -16,9 +16,9 @@ export async function POST(req: NextRequest) {
     const email = body.email.toLowerCase();
     const ip = getRequestIp(req);
     const rateKey = `user-login:${ip}:${email}`;
-    const limiter = rateLimitAttempt(rateKey, 10, 15 * 60 * 1000);
+    const limiter = rateLimitAttempt(rateKey, 5, 15 * 60 * 1000);
     if (!limiter.allowed) {
-      return jsonError("Too many login attempts. Try again later.", 429, "RATE_LIMITED");
+      return jsonError("Too many login attempts. Your account has been temporarily locked. Please contact the administrator at vt.gowreesh43@gmail.com.", 429, "RATE_LIMITED");
     }
     const user = await prisma.user.findUnique({ where: { email } });
     if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
