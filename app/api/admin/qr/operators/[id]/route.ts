@@ -27,12 +27,20 @@ export async function PUT(req: NextRequest, { params }: { params: Promise<{ id: 
 }
 
 export async function DELETE(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const auth = await requireAdmin(req);
-  if (auth instanceof Response) return auth;
-  const { id } = await params;
-  const operator = await prisma.qrOperator.delete({ where: { id } });
-  await logAudit({ action: "admin.operator_deleted", category: "ADMIN", userId: auth.payload.id, metadata: { operatorName: operator.name }, req });
-  return jsonSuccess({});
+  try {
+    const auth = await requireAdmin(req);
+    if (auth instanceof Response) return auth;
+    const { id } = await params;
+
+    const operator = await prisma.qrOperator.findUnique({ where: { id } });
+    if (!operator) return jsonError("Operator not found", 404, "OPERATOR_NOT_FOUND");
+
+    await prisma.qrOperator.delete({ where: { id } });
+    await logAudit({ action: "admin.operator_deleted", category: "ADMIN", userId: auth.payload.id, metadata: { operatorName: operator.name }, req });
+    return jsonSuccess({});
+  } catch (error: any) {
+    return jsonError(error.message || "Unable to delete operator", 400);
+  }
 }
 
 async function requireAdmin(req: NextRequest) {

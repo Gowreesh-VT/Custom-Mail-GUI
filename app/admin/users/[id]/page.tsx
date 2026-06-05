@@ -13,6 +13,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/client-api";
+import { Switch } from "@/components/ui/switch";
+import { Eye, EyeOff, Loader2, Lock, Plus, Unlock } from "lucide-react";
 
 export default function AdminUserDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -63,6 +65,7 @@ export default function AdminUserDetailPage() {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="sent">Sent Emails</TabsTrigger>
           <TabsTrigger value="templates">Templates</TabsTrigger>
+          <TabsTrigger value="smtp">SMTP Pool & Lock</TabsTrigger>
           <TabsTrigger value="audit">Audit Trail</TabsTrigger>
         </TabsList>
         <TabsContent value="overview">
@@ -126,12 +129,12 @@ export default function AdminUserDetailPage() {
                 <CardTitle className="text-sm font-medium">Fallback SMTP</CardTitle>
               </CardHeader>
               <CardContent className="space-y-2">
-                <p className="text-sm">
+                <div className="text-sm">
                   <span className="font-semibold">Fallback:</span>{" "}
                   <Badge variant={user.smtpFallbackEnabled ? "sent" : "outline"}>
                     {user.smtpFallbackEnabled ? "Enabled" : "Disabled"}
                   </Badge>
-                </p>
+                </div>
                 {user.smtpFallbackEnabled && (
                   <>
                     <p className="text-sm">
@@ -172,6 +175,13 @@ export default function AdminUserDetailPage() {
             rows={data.templates || []}
             columns={["Name", "Fields", "Created"]}
             render={(t) => [t.name, t.mergeFields?.length, new Date(t.createdAt).toLocaleString()]}
+          />
+        </TabsContent>
+        <TabsContent value="smtp">
+          <AdminSmtpPoolTab 
+            userId={id} 
+            initialLocked={Boolean(user.adminSmtpLocked)} 
+            initialPool={user.smtpPool || []} 
           />
         </TabsContent>
         <TabsContent value="audit">
@@ -316,6 +326,462 @@ function Pagination({ currentPage, totalPages, onPageChange }: { currentPage: nu
       <Button variant="outline" size="sm" onClick={() => onPageChange(Math.min(totalPages, currentPage + 1))} disabled={currentPage === totalPages}>
         Next
       </Button>
+    </div>
+  );
+}
+
+function AdminSmtpPoolTab({ userId, initialLocked, initialPool }: { userId: string; initialLocked: boolean; initialPool: any[] }) {
+  const [locked, setLocked] = useState(initialLocked);
+  const [pool, setPool] = useState<any[]>(initialPool);
+  const [loadingLock, setLoadingLock] = useState(false);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingEntry, setEditingEntry] = useState<any>(null);
+  const [testingId, setTestingId] = useState<string | null>(null);
+
+  const [formState, setFormState] = useState<any>({
+    label: "",
+    host: "",
+    port: 587,
+    username: "",
+    password: "",
+    fromName: "",
+    fromEmail: "",
+    encryption: "TLS",
+    rejectUnauth: true,
+    isPrimary: false,
+    isFallback: false
+  });
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (editingEntry) {
+      setFormState({
+        label: editingEntry.label || "",
+        host: editingEntry.host || "",
+        port: editingEntry.port || 587,
+        username: editingEntry.username || "",
+        password: "",
+        fromName: editingEntry.fromName || "",
+        fromEmail: editingEntry.fromEmail || "",
+        encryption: editingEntry.encryption || "TLS",
+        rejectUnauth: editingEntry.rejectUnauth !== false,
+        isPrimary: Boolean(editingEntry.isPrimary),
+        isFallback: Boolean(editingEntry.isFallback)
+      });
+    } else {
+      setFormState({
+        label: "",
+        host: "",
+        port: 587,
+        username: "",
+        password: "",
+        fromName: "",
+        fromEmail: "",
+        encryption: "TLS",
+        rejectUnauth: true,
+        isPrimary: false,
+        isFallback: false
+      });
+    }
+  }, [editingEntry, dialogOpen]);
+
+  async function refreshPool() {
+    try {
+      const data = await apiFetch<any>(`/api/admin/users/${userId}/smtp-pool`);
+      if (data.success) {
+        setPool(data.entries || []);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load SMTP pool");
+    }
+  }
+
+  async function handleToggleLock() {
+    setLoadingLock(true);
+    try {
+      const endpoint = locked ? `/api/admin/users/${userId}/unlock-smtp` : `/api/admin/users/${userId}/lock-smtp`;
+      const res = await apiFetch<any>(endpoint, { method: "POST", body: "{}" });
+      if (res.success) {
+        setLocked(!locked);
+        toast.success(locked ? "SMTP settings unlocked for user" : "SMTP settings locked to admin credentials");
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Operation failed");
+    } finally {
+      setLoadingLock(false);
+    }
+  }
+
+  async function handleTest(id: string) {
+    setTestingId(id);
+    try {
+      const res = await apiFetch<any>(`/api/admin/users/${userId}/smtp-pool/${id}/test`, { method: "POST" });
+      if (res.success) {
+        toast.success(`Connected successfully in ${res.latencyMs}ms`);
+      } else {
+        toast.error(res.error || "Connection test failed");
+      }
+      await refreshPool();
+    } catch (e: any) {
+      toast.error(e.message || "Connection test failed");
+      await refreshPool();
+    } finally {
+      setTestingId(null);
+    }
+  }
+
+  async function handleDelete(id: string) {
+    if (!confirm("Are you sure you want to remove this SMTP server?")) return;
+    try {
+      const res = await apiFetch<any>(`/api/admin/users/${userId}/smtp-pool/${id}`, { method: "DELETE" });
+      if (res.success) {
+        toast.success("SMTP server removed");
+        if (res.warning) toast.warning(res.warning);
+        await refreshPool();
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete SMTP server");
+    }
+  }
+
+  async function handleTogglePrimary(entry: any) {
+    try {
+      await apiFetch(`/api/admin/users/${userId}/smtp-pool/${entry.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ isPrimary: !entry.isPrimary, isFallback: false })
+      });
+      toast.success(entry.isPrimary ? "Primary role removed" : "Set as primary SMTP");
+      await refreshPool();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update role");
+    }
+  }
+
+  async function handleToggleFallback(entry: any) {
+    try {
+      await apiFetch(`/api/admin/users/${userId}/smtp-pool/${entry.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ isFallback: !entry.isFallback, isPrimary: false })
+      });
+      toast.success(entry.isFallback ? "Fallback role removed" : "Set as fallback SMTP");
+      await refreshPool();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to update role");
+    }
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const payload: any = { ...formState };
+      if (editingEntry && !payload.password) {
+        delete payload.password;
+      }
+      
+      const endpoint = editingEntry 
+        ? `/api/admin/users/${userId}/smtp-pool/${editingEntry.id}`
+        : `/api/admin/users/${userId}/smtp-pool`;
+      
+      const method = editingEntry ? "PUT" : "POST";
+      const res = await apiFetch<any>(endpoint, { method, body: JSON.stringify(payload) });
+      if (res.success) {
+        toast.success(editingEntry ? "SMTP server updated" : "SMTP server added to pool");
+        setDialogOpen(false);
+        setEditingEntry(null);
+        await refreshPool();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save SMTP settings");
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                {locked ? <Lock className="h-5 w-5 text-failed" /> : <Unlock className="h-5 w-5 text-sent" />}
+                SMTP Override & Restriction
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Prevent this user from configuring their own SMTP. When locked, all outgoing emails are forced to use the admin-assigned credentials below.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 self-start md:self-auto shrink-0">
+              <Badge variant={locked ? "failed" : "sent"}>
+                {locked ? "Locked to Admin SMTP" : "Unlocked (User Custom SMTP Allowed)"}
+              </Badge>
+              <Button 
+                variant={locked ? "outline" : "destructive"} 
+                disabled={loadingLock}
+                onClick={handleToggleLock}
+              >
+                {loadingLock ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : locked ? (
+                  "Unlock Settings"
+                ) : (
+                  "Lock to Admin"
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle>Admin-Assigned SMTP Pool</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              Add and manage SMTP servers assigned to this user. You must designate one as primary before locking.
+            </p>
+          </div>
+          <Button onClick={() => { setEditingEntry(null); setDialogOpen(true); }}>
+            <Plus className="h-4 w-4 mr-2" /> Add SMTP Server
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {pool.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-8 text-center border border-dashed rounded-lg bg-muted/20 text-muted-foreground">
+              <span className="text-2xl mb-2">📬</span>
+              <p className="font-medium text-sm">No SMTP servers assigned yet</p>
+              <p className="text-xs">Add at least one server to configure primary sending.</p>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Server Info</TableHead>
+                    <TableHead>Configuration</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {pool.map((entry) => (
+                    <TableRow key={entry.id}>
+                      <TableCell>
+                        <div className="font-semibold text-sm">{entry.label}</div>
+                        <div className="text-xs text-muted-foreground font-mono mt-0.5">{entry.host}:{entry.port}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="text-xs">
+                          <span className="font-semibold text-muted-foreground">User:</span> {entry.username}
+                        </div>
+                        <div className="text-xs mt-0.5">
+                          <span className="font-semibold text-muted-foreground">From:</span> {entry.fromName} &lt;{entry.fromEmail}&gt;
+                        </div>
+                      </TableCell>
+                      <TableCell className="space-x-1 whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          variant={entry.isPrimary ? "default" : "outline"}
+                          className="h-7 px-2 text-[10px] uppercase font-bold"
+                          onClick={() => handleTogglePrimary(entry)}
+                        >
+                          {entry.isPrimary ? "★ Primary" : "Set Primary"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={entry.isFallback ? "secondary" : "outline"}
+                          className="h-7 px-2 text-[10px] uppercase font-bold"
+                          onClick={() => handleToggleFallback(entry)}
+                        >
+                          {entry.isFallback ? "🔄 Fallback" : "Set Fallback"}
+                        </Button>
+                      </TableCell>
+                      <TableCell>
+                        {testingId === entry.id ? (
+                          <span className="text-xs flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> Testing...</span>
+                        ) : entry.lastTestedAt ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className={`h-2 w-2 rounded-full ${entry.lastTestSuccess ? "bg-emerald-500" : "bg-red-500"}`} />
+                            <span className="text-xs">
+                              {entry.lastTestSuccess ? `Ok (${entry.lastTestLatency}ms)` : "Failed"}
+                            </span>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">Untested</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right space-x-1 whitespace-nowrap">
+                        <Button size="sm" variant="outline" className="h-7 px-2.5" onClick={() => handleTest(entry.id)} disabled={testingId !== null}>
+                          Test
+                        </Button>
+                        <Button size="sm" variant="outline" className="h-7 px-2.5" onClick={() => { setEditingEntry(entry); setDialogOpen(true); }}>
+                          Edit
+                        </Button>
+                        <Button size="sm" variant="destructive" className="h-7 px-2.5" onClick={() => handleDelete(entry.id)}>
+                          Delete
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingEntry ? "Edit SMTP Server" : "Add SMTP Server"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="label">Label</Label>
+              <Input 
+                id="label"
+                value={formState.label} 
+                onChange={(e) => setFormState({ ...formState, label: e.target.value })}
+                placeholder="e.g. Sendgrid Main" 
+                required 
+              />
+            </div>
+
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="host">Host</Label>
+                <Input 
+                  id="host"
+                  value={formState.host} 
+                  onChange={(e) => setFormState({ ...formState, host: e.target.value })}
+                  placeholder="smtp.domain.com" 
+                  required 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="port">Port</Label>
+                <Input 
+                  id="port"
+                  type="number" 
+                  value={formState.port} 
+                  onChange={(e) => setFormState({ ...formState, port: Number(e.target.value) })}
+                  required 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="username">Username</Label>
+                <Input 
+                  id="username"
+                  value={formState.username} 
+                  onChange={(e) => setFormState({ ...formState, username: e.target.value })}
+                  placeholder="API Key or User" 
+                  required 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input 
+                    id="password"
+                    type={showPassword ? "text" : "password"} 
+                    value={formState.password} 
+                    onChange={(e) => setFormState({ ...formState, password: e.target.value })}
+                    placeholder={editingEntry ? "Leave empty to keep saved" : "Password"} 
+                    required={!editingEntry} 
+                    className="pr-9"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-9 w-9 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="fromName">From Name</Label>
+                <Input 
+                  id="fromName"
+                  value={formState.fromName} 
+                  onChange={(e) => setFormState({ ...formState, fromName: e.target.value })}
+                  placeholder="Sender Name" 
+                  required 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="fromEmail">From Email</Label>
+                <Input 
+                  id="fromEmail"
+                  type="email"
+                  value={formState.fromEmail} 
+                  onChange={(e) => setFormState({ ...formState, fromEmail: e.target.value })}
+                  placeholder="sender@domain.com" 
+                  required 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="encryption">Encryption</Label>
+                <Select 
+                  value={formState.encryption} 
+                  onValueChange={(val) => setFormState({ ...formState, encryption: val })}
+                >
+                  <SelectTrigger id="encryption">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TLS">TLS</SelectItem>
+                    <SelectItem value="SSL">SSL</SelectItem>
+                    <SelectItem value="NONE">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between border rounded-lg px-3 py-2 bg-muted/20">
+                <Label htmlFor="rejectUnauth" className="text-xs cursor-pointer">Reject Unauthorized</Label>
+                <Switch 
+                  id="rejectUnauth"
+                  checked={formState.rejectUnauth} 
+                  onCheckedChange={(checked) => setFormState({ ...formState, rejectUnauth: checked })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="flex items-center justify-between border rounded-lg px-3 py-2 bg-muted/20">
+                <Label htmlFor="isPrimary" className="text-xs cursor-pointer">Set as Primary</Label>
+                <Switch 
+                  id="isPrimary"
+                  checked={formState.isPrimary} 
+                  onCheckedChange={(checked) => setFormState({ ...formState, isPrimary: checked, isFallback: checked ? false : formState.isFallback })}
+                />
+              </div>
+              <div className="flex items-center justify-between border rounded-lg px-3 py-2 bg-muted/20">
+                <Label htmlFor="isFallback" className="text-xs cursor-pointer">Set as Fallback</Label>
+                <Switch 
+                  id="isFallback"
+                  checked={formState.isFallback} 
+                  onCheckedChange={(checked) => setFormState({ ...formState, isFallback: checked, isPrimary: checked ? false : formState.isPrimary })}
+                />
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full mt-2 font-bold">
+              {editingEntry ? "Save Changes" : "Add SMTP Server"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

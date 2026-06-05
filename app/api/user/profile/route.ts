@@ -36,7 +36,9 @@ export async function GET(req: NextRequest) {
         name: dbUser.name,
         email: dbUser.email,
         phone: dbUser.phone || "",
-        extraFields: extraFieldsObj
+        extraFields: extraFieldsObj,
+        forcePasswordReset: dbUser.forcePasswordReset,
+        adminSmtpLocked: dbUser.adminSmtpLocked
       }
     });
   } catch (error: any) {
