@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Eye, EyeOff, Loader2, Plus, Trash2, User } from "lucide-react";
+import { Eye, EyeOff, Loader2, Lock, Plus, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiFetch } from "@/lib/client-api";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 type PasswordErrors = Partial<Record<"currentPassword" | "newPassword" | "confirmPassword", string>>;
 
@@ -22,7 +25,6 @@ export default function SettingsPage() {
   const [newKey, setNewKey] = useState("");
   const [newValue, setNewValue] = useState("");
 
-  const [form, setForm] = useState<any>({ host: "", port: 587, username: "", password: "", fromName: "", fromEmail: "", encryption: "TLS", rejectUnauth: true });
   const [health, setHealth] = useState<any[]>([]);
   const [globalSmtpActive, setGlobalSmtpActive] = useState(false);
   const [passwords, setPasswords] = useState({ currentPassword: "", newPassword: "", confirmPassword: "" });
@@ -30,15 +32,75 @@ export default function SettingsPage() {
   const [visible, setVisible] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
   const [healthLoading, setHealthLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [testing, setTesting] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [showResetAlert, setShowResetAlert] = useState(false);
+  const [activeTab, setActiveTab] = useState("profile");
 
-  const [secondaryForm, setSecondaryForm] = useState<any>({ enabled: false, host: "", port: 587, username: "", password: "", fromName: "", fromEmail: "", encryption: "TLS", rejectUnauth: true, passwordSet: false });
-  const [lastFallbackEvent, setLastFallbackEvent] = useState<any>(null);
-  const [savingSecondary, setSavingSecondary] = useState(false);
-  const [testingSecondary, setTestingSecondary] = useState(false);
-  const [showInfo, setShowInfo] = useState(false);
+  const goToPassword = () => {
+    setActiveTab("profile");
+    setTimeout(() => {
+      const el = document.getElementById("change-password-card");
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+        const input = el.querySelector("input");
+        if (input) input.focus();
+      }
+    }, 100);
+  };
+
+  // SMTP Pool States
+  const [userPool, setUserPool] = useState<any[]>([]);
+  const [poolDialogOpen, setPoolDialogOpen] = useState(false);
+  const [editingPoolEntry, setEditingPoolEntry] = useState<any>(null);
+  const [testingPoolId, setTestingPoolId] = useState<string | null>(null);
+  const [poolFormState, setPoolFormState] = useState<any>({
+    label: "",
+    host: "",
+    port: 587,
+    username: "",
+    password: "",
+    fromName: "",
+    fromEmail: "",
+    encryption: "TLS",
+    rejectUnauth: true,
+    isPrimary: false,
+    isFallback: false
+  });
+  const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (editingPoolEntry) {
+      setPoolFormState({
+        label: editingPoolEntry.label || "",
+        host: editingPoolEntry.host || "",
+        port: editingPoolEntry.port || 587,
+        username: editingPoolEntry.username || "",
+        password: "",
+        fromName: editingPoolEntry.fromName || "",
+        fromEmail: editingPoolEntry.fromEmail || "",
+        encryption: editingPoolEntry.encryption || "TLS",
+        rejectUnauth: editingPoolEntry.rejectUnauth !== false,
+        isPrimary: Boolean(editingPoolEntry.isPrimary),
+        isFallback: Boolean(editingPoolEntry.isFallback)
+      });
+    } else {
+      setPoolFormState({
+        label: "",
+        host: "",
+        port: 587,
+        username: "",
+        password: "",
+        fromName: "",
+        fromEmail: "",
+        encryption: "TLS",
+        rejectUnauth: true,
+        isPrimary: false,
+        isFallback: false
+      });
+    }
+  }, [editingPoolEntry, poolDialogOpen]);
+
+
 
   // PWA & Push Notification States
   const [isInstalled, setIsInstalled] = useState(false);
@@ -223,28 +285,109 @@ export default function SettingsPage() {
       const profData = await apiFetch<any>("/api/user/profile");
       if (profData.success) {
         setProfile(profData.profile);
+        if (profData.profile.forcePasswordReset) {
+          setShowResetAlert(true);
+        }
+      }
+
+      const poolData = await apiFetch<any>("/api/smtp/pool");
+      if (poolData.success) {
+        setUserPool(poolData.entries || []);
       }
 
       const data = await apiFetch<any>("/api/smtp/settings");
-      setForm({ ...data.smtpConfig, password: "" });
       setHealth(data.smtpHealthLog || []);
       setGlobalSmtpActive(Boolean(data.globalSmtpActive));
-
-      const secData = await apiFetch<any>("/api/smtp/settings/secondary");
-      setSecondaryForm({ ...secData, password: "" });
-
-      const logsData = await apiFetch<any>("/api/smtp/fallback-logs");
-      if (logsData.logs && logsData.logs.length > 0) {
-        setLastFallbackEvent(logsData.logs[0]);
-      } else {
-        setLastFallbackEvent(null);
-      }
     } catch (error: any) {
       toast.error(error.message);
     } finally {
       setLoading(false);
       setHealthLoading(false);
       setLoadingProfile(false);
+    }
+  }
+
+  async function refreshUserPool() {
+    try {
+      const poolData = await apiFetch<any>("/api/smtp/pool");
+      if (poolData.success) {
+        setUserPool(poolData.entries || []);
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to load SMTP pool");
+    }
+  }
+
+  async function handleTestPool(id: string) {
+    setTestingPoolId(id);
+    try {
+      const res = await apiFetch<any>(`/api/smtp/pool/${id}/test`, { method: "POST" });
+      if (res.success) {
+        toast.success(`Connected successfully in ${res.latencyMs}ms`);
+      } else {
+        toast.error(res.error || "Connection test failed");
+      }
+      await refreshUserPool();
+    } catch (e: any) {
+      toast.error(e.message || "Connection test failed");
+      await refreshUserPool();
+    } finally {
+      setTestingPoolId(null);
+    }
+  }
+
+  async function handleDeletePool(id: string) {
+    if (!confirm("Are you sure you want to remove this SMTP server?")) return;
+    try {
+      const res = await apiFetch<any>(`/api/smtp/pool/${id}`, { method: "DELETE" });
+      if (res.success) {
+        toast.success("SMTP server removed");
+        if (res.warning) toast.warning(res.warning);
+        await refreshUserPool();
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to delete SMTP server");
+    }
+  }
+
+  async function handleSetPoolPrimary(entry: any) {
+    try {
+      await apiFetch(`/api/smtp/pool/${entry.id}/set-primary`, { method: "POST" });
+      toast.success("Set as primary SMTP");
+      await refreshUserPool();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to set primary");
+    }
+  }
+
+  async function handleSetPoolFallback(entry: any) {
+    try {
+      await apiFetch(`/api/smtp/pool/${entry.id}/set-fallback`, { method: "POST" });
+      toast.success("Set as fallback SMTP");
+      await refreshUserPool();
+    } catch (e: any) {
+      toast.error(e.message || "Failed to set fallback");
+    }
+  }
+
+  async function handleSavePoolEntry(e: React.FormEvent) {
+    e.preventDefault();
+    try {
+      const payload = { ...poolFormState };
+      if (editingPoolEntry && !payload.password) {
+        delete payload.password;
+      }
+      const endpoint = editingPoolEntry ? `/api/smtp/pool/${editingPoolEntry.id}` : "/api/smtp/pool";
+      const method = editingPoolEntry ? "PUT" : "POST";
+      const res = await apiFetch<any>(endpoint, { method, body: JSON.stringify(payload) });
+      if (res.success) {
+        toast.success(editingPoolEntry ? "SMTP server updated" : "SMTP server added to pool");
+        setPoolDialogOpen(false);
+        setEditingPoolEntry(null);
+        await refreshUserPool();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to save SMTP settings");
     }
   }
 
@@ -304,85 +447,7 @@ export default function SettingsPage() {
     }));
   }
 
-  function set(key: string, value: any) {
-    setForm((current: any) => ({ ...current, [key]: value }));
-  }
 
-  async function save() {
-    try {
-      setSaving(true);
-      await apiFetch("/api/smtp/settings", { method: "POST", body: JSON.stringify(form) });
-      toast.success("SMTP settings saved");
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function test() {
-    try {
-      setTesting(true);
-      const data = await apiFetch<any>("/api/smtp/test", { method: "POST", body: "{}" });
-      toast.success(`Connected in ${data.latencyMs}ms`);
-      await loadSettings();
-    } catch (error: any) {
-      toast.error(error.message);
-      await loadSettings().catch(() => {});
-    } finally {
-      setTesting(false);
-    }
-  }
-
-  function setSec(key: string, value: any) {
-    setSecondaryForm((current: any) => ({ ...current, [key]: value }));
-  }
-
-  async function saveSecondary() {
-    try {
-      setSavingSecondary(true);
-      await apiFetch("/api/smtp/settings/secondary", {
-        method: "PUT",
-        body: JSON.stringify(secondaryForm)
-      });
-      toast.success("Fallback SMTP settings saved");
-      await loadSettings();
-    } catch (error: any) {
-      toast.error(error.message);
-    } finally {
-      setSavingSecondary(false);
-    }
-  }
-
-  async function testSecondary() {
-    try {
-      setTestingSecondary(true);
-      const data = await apiFetch<any>("/api/smtp/test/secondary", {
-        method: "POST",
-        body: JSON.stringify(secondaryForm)
-      });
-      if (data.success) {
-        toast.success(`Connected in ${data.latencyMs}ms`);
-      } else {
-        toast.error(data.error || "Connection test failed");
-      }
-      await loadSettings();
-    } catch (error: any) {
-      toast.error(error.message);
-      await loadSettings().catch(() => {});
-    } finally {
-      setTestingSecondary(false);
-    }
-  }
-
-  function formatLastUsed(event: any) {
-    if (!event) return "Never used (primary is healthy)";
-    const date = new Date(event.createdAt);
-    const diffMs = Date.now() - date.getTime();
-    const minutes = Math.round(diffMs / 60000);
-    const relative = minutes < 1 ? "just now" : minutes < 60 ? `${minutes} minutes ago` : minutes < 1440 ? `${Math.round(minutes / 60)} hours ago` : `${Math.round(minutes / 1440)} days ago`;
-    return `Last used: ${relative} (primary error: ${event.primaryError})`;
-  }
 
   const strength = useMemo(() => passwordStrength(passwords.newPassword), [passwords.newPassword]);
 
@@ -409,6 +474,8 @@ export default function SettingsPage() {
       toast.success("Password updated successfully");
       setPasswords({ currentPassword: "", newPassword: "", confirmPassword: "" });
       setPasswordErrors({});
+      setProfile((current: any) => ({ ...current, forcePasswordReset: false }));
+      setShowResetAlert(false);
     } catch (error: any) {
       if (error.message === "Current password is incorrect") {
         setPasswordErrors((current) => ({ ...current, currentPassword: "Incorrect password" }));
@@ -421,515 +488,659 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
+    <div className="mx-auto max-w-6xl space-y-5">
       <div><h1 className="text-2xl font-semibold tracking-normal">Account Settings</h1><p className="text-sm text-muted-foreground">Manage your profile, credentials, and app preferences.</p></div>
       
-      {loadingProfile ? (
-        <Card>
-          <CardHeader><CardTitle>User Profile</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-10 w-full rounded-md" />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> User Profile</CardTitle>
-            <CardDescription>Update your personal information and custom details.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
-              </div>
-              <div className="space-y-2">
-                <Label>Email</Label>
-                <Input type="email" value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
-              </div>
-              <div className="space-y-2 md:col-span-2">
-                <Label>Phone</Label>
-                <Input type="tel" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
-              </div>
-            </div>
-
-            <div className="space-y-3 pt-2 border-t">
-              <Label className="text-sm font-semibold">Extra Custom Fields</Label>
-              
-              {/* List of existing custom fields */}
-              {Object.keys(profile.extraFields || {}).length > 0 && (
-                <div className="space-y-3">
-                  {Object.entries(profile.extraFields || {}).map(([key, val]) => (
-                    <div key={key} className="flex gap-2 items-center">
-                      <div className="w-1/3 truncate font-mono text-xs bg-muted p-2.5 rounded border">{key}</div>
-                      <Input 
-                        className="flex-1" 
-                        value={String(val)} 
-                        onChange={(e) => setExtraFieldValue(key, e.target.value)} 
-                      />
-                      <Button variant="ghost" size="icon" onClick={() => removeExtraField(key)} className="text-red-500 hover:text-red-600 hover:bg-red-500/10 shrink-0">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {/* Add field inline form */}
-              <div className="flex gap-2 items-center pt-1">
-                <Input 
-                  placeholder="New field name (e.g. Company)" 
-                  value={newKey} 
-                  onChange={(e) => setNewKey(e.target.value)} 
-                  className="w-1/3"
-                />
-                <Input 
-                  placeholder="Field value" 
-                  value={newValue} 
-                  onChange={(e) => setNewValue(e.target.value)} 
-                  className="flex-1"
-                />
-                <Button variant="outline" size="icon" onClick={addExtraField} className="shrink-0">
-                  <Plus className="h-4 w-4" />
+      {profile.forcePasswordReset && (
+        <div className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-500 dark:border-red-500/20 dark:bg-red-500/5 dark:text-red-400">
+          <div className="flex gap-3">
+            <span className="text-xl shrink-0">⚠️</span>
+            <div className="space-y-1">
+              <h4 className="font-bold text-sm">Action Required: Password Reset Enforced</h4>
+              <p className="text-xs opacity-90 leading-relaxed">
+                Your administrator has required a password change for your account. You will not be able to navigate to other pages or access core features until your password is updated.
+              </p>
+              <div className="pt-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="bg-red-500 text-white hover:bg-red-600 border-none h-7 px-3 text-xs font-bold"
+                  onClick={goToPassword}
+                >
+                  Change Password Now
                 </Button>
               </div>
             </div>
-
-            <div className="flex justify-end pt-2">
-              <Button onClick={saveProfile} disabled={savingProfile}>
-                {savingProfile ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : "Save Profile"}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {loading ? (
-        <Card>
-          <CardHeader><CardTitle>Connection</CardTitle></CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
-              <Skeleton className="h-10 w-full rounded-md" />
-              <Skeleton className="h-10 w-full rounded-md" />
-            </div>
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-10 w-full rounded-md" />
-            <Skeleton className="h-10 w-full rounded-md" />
-            <div className="flex gap-3">
-              <Skeleton className="h-10 w-32 rounded-md" />
-              <Skeleton className="h-10 w-36 rounded-md" />
-            </div>
-          </CardContent>
-        </Card>
-      ) : globalSmtpActive ? (
-        <Card><CardHeader><CardTitle>Connection</CardTitle></CardHeader><CardContent><p className="text-sm text-muted-foreground">SMTP is managed by your administrator.</p></CardContent></Card>
-      ) : <Card>
-        <CardHeader><CardTitle>Connection</CardTitle><CardDescription>Password is never returned after saving.</CardDescription></CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2"><Label>Host</Label><Input value={form.host} onChange={(e) => set("host", e.target.value)} /></div>
-          <div className="space-y-2"><Label>Port</Label><Input type="number" value={form.port} onChange={(e) => set("port", Number(e.target.value))} /></div>
-          <div className="space-y-2"><Label>Username</Label><Input value={form.username} onChange={(e) => set("username", e.target.value)} /></div>
-          <div className="space-y-2"><Label>Password</Label><Input type="password" value={form.password} placeholder={form.hasPassword ? "Saved password" : ""} onChange={(e) => set("password", e.target.value)} /></div>
-          <div className="space-y-2"><Label>From Name</Label><Input value={form.fromName} onChange={(e) => set("fromName", e.target.value)} /></div>
-          <div className="space-y-2"><Label>From Email</Label><Input type="email" value={form.fromEmail} onChange={(e) => set("fromEmail", e.target.value)} /></div>
-          <div className="space-y-2"><Label>Encryption</Label><Select value={form.encryption} onValueChange={(v) => set("encryption", v)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="TLS">TLS</SelectItem><SelectItem value="SSL">SSL</SelectItem><SelectItem value="NONE">None</SelectItem></SelectContent></Select></div>
-          <div className="flex items-center justify-between rounded-md border p-3"><Label>Reject Unauthorized</Label><Switch checked={form.rejectUnauth} onCheckedChange={(v) => set("rejectUnauth", v)} /></div>
-          <div className="flex gap-2 md:col-span-2">
-            <Button onClick={save} disabled={saving}>{saving ? (<><Loader2 className="h-4 w-4 animate-spin" />Saving...</>) : "Save Settings"}</Button>
-            <Button variant="outline" onClick={test} disabled={testing}>{testing ? (<><Loader2 className="h-4 w-4 animate-spin" />Testing...</>) : "Test Connection"}</Button>
           </div>
-        </CardContent>
-      </Card>}
+        </div>
+      )}
+      
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-5">
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="profile">Profile & Security</TabsTrigger>
+          <TabsTrigger value="smtp">SMTP Connection</TabsTrigger>
+          <TabsTrigger value="app">App & Notifications</TabsTrigger>
+        </TabsList>
 
-      {!loading && !globalSmtpActive && (
-        <Card className="transition-all duration-300">
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div>
-                <CardTitle className="flex items-center gap-2">
-                  🔄 Fallback SMTP
-                </CardTitle>
-                <CardDescription>
-                  Configure a backup SMTP server in case primary limits or failures occur.
-                </CardDescription>
-              </div>
-              <Switch
-                checked={secondaryForm.enabled}
-                onCheckedChange={(checked) => {
-                  setSecondaryForm((c: any) => ({ ...c, enabled: checked }));
-                }}
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-xs text-muted-foreground">
-              If your primary SMTP fails due to rate limits or connection errors, emails will
-              automatically retry using this backup SMTP server.
-            </p>
+        <TabsContent value="profile" className="space-y-5">
+          {loadingProfile ? (
+            <Card>
+              <CardHeader><CardTitle>User Profile</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <Skeleton className="h-10 w-full rounded-md" />
+                <Skeleton className="h-10 w-full rounded-md" />
+                <Skeleton className="h-10 w-full rounded-md" />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2"><User className="h-5 w-5" /> User Profile</CardTitle>
+                <CardDescription>Update your personal information and custom details.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Name</Label>
+                    <Input value={profile.name || ""} onChange={(e) => setProfile({ ...profile, name: e.target.value })} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Email</Label>
+                    <Input type="email" value={profile.email || ""} onChange={(e) => setProfile({ ...profile, email: e.target.value })} />
+                  </div>
+                  <div className="space-y-2 md:col-span-2">
+                    <Label>Phone</Label>
+                    <Input type="tel" value={profile.phone || ""} onChange={(e) => setProfile({ ...profile, phone: e.target.value })} />
+                  </div>
+                </div>
 
-            <div className="rounded-md bg-muted/40 p-3 text-xs flex items-center gap-2">
-              <span className={cn("h-2 w-2 rounded-full", lastFallbackEvent ? "bg-amber-500 animate-pulse" : "bg-emerald-500")} />
-              <span className="font-medium text-muted-foreground">
-                {formatLastUsed(lastFallbackEvent)}
-              </span>
-            </div>
+                <div className="space-y-3 pt-2 border-t">
+                  <Label className="text-sm font-semibold">Extra Custom Fields</Label>
+                  
+                  {/* List of existing custom fields */}
+                  {Object.keys(profile.extraFields || {}).length > 0 && (
+                    <div className="space-y-3">
+                      {Object.entries(profile.extraFields || {}).map(([key, val]) => (
+                        <div key={key} className="flex gap-2 items-center">
+                          <div className="w-1/3 truncate font-mono text-xs bg-muted p-2.5 rounded border">{key}</div>
+                          <Input 
+                            className="flex-1" 
+                            value={String(val)} 
+                            onChange={(e) => setExtraFieldValue(key, e.target.value)} 
+                          />
+                          <Button variant="ghost" size="icon" onClick={() => removeExtraField(key)} className="text-red-500 hover:text-red-600 hover:bg-red-500/10 shrink-0">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
 
-            {!secondaryForm.enabled ? (
-              <div className="flex flex-col items-center justify-center rounded-md border border-dashed p-6 text-center text-muted-foreground bg-muted/20">
-                <span className="text-2xl mb-1">🔒</span>
-                <p className="text-sm font-medium">Secondary SMTP configuration locked</p>
-                <p className="text-xs">Enable the toggle to configure a fallback SMTP server</p>
-              </div>
-            ) : (
-              <div className="grid gap-4 md:grid-cols-2 pt-2 transition-all duration-300">
-                <div className="space-y-2">
-                  <Label>Host</Label>
-                  <Input
-                    value={secondaryForm.host || ""}
-                    onChange={(e) => setSec("host", e.target.value)}
-                    placeholder="smtp.backup.com"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Port</Label>
-                  <Input
-                    type="number"
-                    value={secondaryForm.port || ""}
-                    onChange={(e) => setSec("port", Number(e.target.value))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Username</Label>
-                  <Input
-                    value={secondaryForm.username || ""}
-                    onChange={(e) => setSec("username", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Password</Label>
-                  <div className="relative">
-                    <Input
-                      type={visible.secondaryPassword ? "text" : "password"}
-                      value={secondaryForm.password || ""}
-                      placeholder={secondaryForm.passwordSet ? "Saved password" : ""}
-                      onChange={(e) => setSec("password", e.target.value)}
-                      className="pr-10"
+                  {/* Add field inline form */}
+                  <div className="flex gap-2 items-center pt-1">
+                    <Input 
+                      placeholder="New field name (e.g. Company)" 
+                      value={newKey} 
+                      onChange={(e) => setNewKey(e.target.value)} 
+                      className="w-1/3"
                     />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="absolute right-0 top-0 h-10 w-10"
-                      onClick={() => setVisible((c) => ({ ...c, secondaryPassword: !c.secondaryPassword }))}
-                    >
-                      {visible.secondaryPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4 text-muted-foreground" />}
+                    <Input 
+                      placeholder="Field value" 
+                      value={newValue} 
+                      onChange={(e) => setNewValue(e.target.value)} 
+                      className="flex-1"
+                    />
+                    <Button variant="outline" size="icon" onClick={addExtraField} className="shrink-0">
+                      <Plus className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>From Name</Label>
-                  <Input
-                    value={secondaryForm.fromName || ""}
-                    onChange={(e) => setSec("fromName", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>From Email</Label>
-                  <Input
-                    type="email"
-                    value={secondaryForm.fromEmail || ""}
-                    onChange={(e) => setSec("fromEmail", e.target.value)}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Encryption</Label>
-                  <Select
-                    value={secondaryForm.encryption || "TLS"}
-                    onValueChange={(v) => setSec("encryption", v)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="TLS">TLS</SelectItem>
-                      <SelectItem value="SSL">SSL</SelectItem>
-                      <SelectItem value="NONE">None</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="flex items-center justify-between rounded-md border p-3">
-                  <Label>Reject Unauthorized</Label>
-                  <Switch
-                    checked={secondaryForm.rejectUnauth !== false}
-                    onCheckedChange={(v) => setSec("rejectUnauth", v)}
-                  />
-                </div>
-                <div className="flex gap-2 md:col-span-2">
-                  <Button onClick={saveSecondary} disabled={savingSecondary}>
-                    {savingSecondary ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : "Save Fallback SMTP"}
-                  </Button>
-                  <Button variant="outline" onClick={testSecondary} disabled={testingSecondary}>
-                    {testingSecondary ? <><Loader2 className="h-4 w-4 animate-spin" />Testing...</> : "Test Fallback Connection"}
+
+                <div className="flex justify-end pt-2">
+                  <Button onClick={saveProfile} disabled={savingProfile}>
+                    {savingProfile ? <><Loader2 className="h-4 w-4 animate-spin" />Saving...</> : "Save Profile"}
                   </Button>
                 </div>
-              </div>
-            )}
+              </CardContent>
+            </Card>
+          )}
 
-            <div className="pt-2 border-t">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="p-0 h-auto hover:bg-transparent text-xs text-muted-foreground flex items-center gap-1"
-                onClick={() => setShowInfo(!showInfo)}
-              >
-                <span>ℹ️ When does fallback trigger?</span>
-                <span className="text-[10px]">{showInfo ? "▲" : "▼"}</span>
-              </Button>
-              {showInfo && (
-                <div className="mt-2 rounded-md bg-muted/30 border p-3 text-xs space-y-2 text-muted-foreground">
-                  <p className="font-semibold text-foreground">Fallback activates when primary SMTP returns:</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Rate limit errors (e.g. 421, 452)</li>
-                    <li>Connection timeout</li>
-                    <li>Connection refused</li>
-                    <li>Daily/hourly send limit reached</li>
-                  </ul>
-                  <p className="font-semibold text-foreground pt-1">Fallback does NOT activate for:</p>
-                  <ul className="list-disc pl-4 space-y-0.5">
-                    <li>Wrong password (535)</li>
-                    <li>Invalid recipient (550)</li>
-                    <li>Authentication errors</li>
-                  </ul>
-                  <p className="text-[10px] italic pt-1">These indicate configuration or routing issues that a backup server cannot fix.</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* PWA Mobile App Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">📱 Mobile App</CardTitle>
-          <CardDescription>Install Custom Mail as a progressive web app on your device.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-850 p-4">
-            <div>
-              <div className="font-bold text-sm text-zinc-100">Status</div>
-              <div className="text-xs text-zinc-400 mt-0.5">
-                {isInstalled ? (
-                  <span className="text-emerald-400 font-semibold flex items-center gap-1">✅ Installed as PWA on this device</span>
-                ) : (
-                  <span className="text-zinc-500">Not installed</span>
-                )}
-              </div>
-            </div>
-            {!isInstalled && (
-              <Button
-                onClick={() => window.dispatchEvent(new Event("trigger-pwa-install"))}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold"
-              >
-                Install App
-              </Button>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* PWA Push Notifications Card */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">🔔 Push Notifications</CardTitle>
-          <CardDescription>Get notified when emails are sent, scheduled sends complete, or emails fail.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-          <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-850 p-4">
-            <div>
-              <div className="font-bold text-sm text-zinc-100">Status</div>
-              <div className="text-xs text-zinc-400 mt-0.5">
-                {notificationsEnabled ? (
-                  <span className="text-emerald-400 font-semibold flex items-center gap-1">🟢 Enabled</span>
-                ) : (
-                  <span className="text-zinc-500">Not enabled</span>
-                )}
-              </div>
-            </div>
-            {!notificationsEnabled && (
-              <Button
-                onClick={enableNotifications}
-                disabled={subscribing}
-                className="bg-blue-600 hover:bg-blue-500 text-white font-bold"
-              >
-                {subscribing ? "Enabling..." : "Enable Notifications"}
-              </Button>
-            )}
-          </div>
-
-          {notificationsEnabled && (
-            <div className="space-y-4 pt-2 border-t border-zinc-850">
+          <Card id="change-password-card">
+            <CardHeader><CardTitle>Change Password</CardTitle><CardDescription>Update your account password without changing active sessions.</CardDescription></CardHeader>
+            <CardContent className="space-y-4">
+              <PasswordField label="Current Password" value={passwords.currentPassword} visible={visible.currentPassword} error={passwordErrors.currentPassword} onToggle={() => setVisible((current) => ({ ...current, currentPassword: !current.currentPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, currentPassword: value }))} />
               <div className="space-y-2">
-                <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Notify me when:</Label>
-                <div className="space-y-2 pl-1">
-                  <div className="flex items-center gap-2 text-sm text-zinc-300">
-                    <span className="text-emerald-400">✅</span> Email sent successfully
+                <PasswordField label="New Password" value={passwords.newPassword} visible={visible.newPassword} error={passwordErrors.newPassword} onToggle={() => setVisible((current) => ({ ...current, newPassword: !current.newPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, newPassword: value }))} />
+                <div className="space-y-1">
+                  <div className="h-2 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full transition-all" style={{ width: strength.width, backgroundColor: strength.barColor }} />
                   </div>
-                  <div className="flex items-center gap-2 text-sm text-zinc-300">
-                    <span className="text-emerald-400">✅</span> Scheduled email fires
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-zinc-300">
-                    <span className="text-emerald-400">✅</span> Bulk send completes
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-zinc-300">
-                    <span className="text-emerald-400">✅</span> Email fails
-                  </div>
+                  <p className="text-xs" style={{ color: strength.textColor }}>{strength.label}</p>
                 </div>
               </div>
+              <PasswordField label="Confirm New Password" value={passwords.confirmPassword} visible={visible.confirmPassword} error={passwordErrors.confirmPassword} onToggle={() => setVisible((current) => ({ ...current, confirmPassword: !current.confirmPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, confirmPassword: value }))} />
+              <div className="flex justify-end">
+                <Button onClick={updatePassword} disabled={changingPassword}>
+                  {changingPassword ? (<><Loader2 className="h-4 w-4 animate-spin" />Updating...</>) : "Update Password"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
 
-              <div className="space-y-3 pt-2 border-t border-zinc-850">
-                <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Active Devices ({subscriptions.length})</Label>
-                {loadingSubscriptions ? (
-                  <div className="space-y-2">
-                    <Skeleton className="h-10 w-full rounded-md" />
+        <TabsContent value="smtp" className="space-y-5">
+          {loading ? (
+            <Card>
+              <CardHeader><CardTitle>Connection</CardTitle></CardHeader>
+              <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <Skeleton className="h-10 w-full rounded-md" />
+                  <Skeleton className="h-10 w-full rounded-md" />
+                </div>
+                <Skeleton className="h-10 w-full rounded-md" />
+                <Skeleton className="h-10 w-full rounded-md" />
+              </CardContent>
+            </Card>
+          ) : (globalSmtpActive || profile.adminSmtpLocked) ? (
+            <Card className="border-amber-500/20 bg-amber-500/5">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-amber-500" /> Connection SMTP
+                </CardTitle>
+                <CardDescription>
+                  {globalSmtpActive 
+                    ? "Global SMTP override is active. All system emails are routed through the administrator's SMTP." 
+                    : "SMTP settings are locked by your administrator. All outgoing emails are routed using admin-assigned credentials."}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm text-muted-foreground">
+                  Contact your system administrator if you need to update SMTP settings or request credentials.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle>SMTP Server Pool</CardTitle>
+                  <CardDescription>
+                    Configure one or more SMTP servers. The system will send via primary and automatically retry with fallback if errors occur.
+                  </CardDescription>
+                </div>
+                <Button onClick={() => { setEditingPoolEntry(null); setPoolDialogOpen(true); }}>
+                  <Plus className="h-4 w-4 mr-2" /> Add SMTP Server
+                </Button>
+              </CardHeader>
+              <CardContent>
+                {userPool.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center p-8 text-center border border-dashed rounded-lg bg-muted/20 text-muted-foreground">
+                    <span className="text-2xl mb-2">📬</span>
+                    <p className="font-medium text-sm">No SMTP servers configured yet</p>
+                    <p className="text-xs font-medium">Add a server above to start sending emails.</p>
                   </div>
-                ) : subscriptions.length === 0 ? (
-                  <p className="text-xs text-zinc-500 italic pl-1">No active devices registered.</p>
                 ) : (
-                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                    {subscriptions.map((sub) => (
-                      <div key={sub.id} className="flex items-center justify-between rounded-lg bg-zinc-900/60 border border-zinc-850 p-3 text-xs">
-                        <div className="min-w-0 flex-1 mr-3">
-                          <div className="font-semibold text-zinc-200 flex items-center gap-1.5">
-                            <span>📱 {sub.deviceName || sub.platform || "Device"}</span>
-                            {sub.platform && <span className="px-1.5 py-0.5 rounded bg-zinc-850 text-[10px] text-zinc-400">{sub.platform}</span>}
-                          </div>
-                          <div className="text-[10px] text-zinc-500 mt-1 truncate">
-                            Added: {new Date(sub.createdAt).toLocaleDateString()} · Last active: {new Date(sub.lastUsedAt).toLocaleDateString()}
-                          </div>
+                  <div className="overflow-x-auto no-scrollbar">
+                    <Table className="min-w-[600px]">
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Server Info</TableHead>
+                          <TableHead>Configuration</TableHead>
+                          <TableHead>Role</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {userPool.map((entry) => (
+                          <TableRow key={entry.id}>
+                            <TableCell>
+                              <div className="font-semibold text-sm">{entry.label}</div>
+                              <div className="text-xs text-muted-foreground font-mono mt-0.5">{entry.host}:{entry.port}</div>
+                            </TableCell>
+                            <TableCell>
+                              <div className="text-xs">
+                                <span className="font-semibold text-muted-foreground">User:</span> {entry.username}
+                              </div>
+                              <div className="text-xs mt-0.5">
+                                <span className="font-semibold text-muted-foreground">From:</span> {entry.fromName} &lt;{entry.fromEmail}&gt;
+                              </div>
+                            </TableCell>
+                            <TableCell className="space-x-1 whitespace-nowrap">
+                              <Button
+                                size="sm"
+                                variant={entry.isPrimary ? "default" : "outline"}
+                                className="h-7 px-2 text-[10px] uppercase font-bold"
+                                onClick={() => handleSetPoolPrimary(entry)}
+                                disabled={entry.isPrimary}
+                              >
+                                {entry.isPrimary ? "★ Primary" : "Set Primary"}
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant={entry.isFallback ? "secondary" : "outline"}
+                                className="h-7 px-2 text-[10px] uppercase font-bold"
+                                onClick={() => handleSetPoolFallback(entry)}
+                                disabled={entry.isFallback}
+                              >
+                                {entry.isFallback ? "🔄 Fallback" : "Set Fallback"}
+                              </Button>
+                            </TableCell>
+                            <TableCell>
+                              {testingPoolId === entry.id ? (
+                                <span className="text-xs flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /> Testing...</span>
+                              ) : entry.lastTestedAt ? (
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`h-2 w-2 rounded-full ${entry.lastTestSuccess ? "bg-emerald-500" : "bg-red-500"}`} />
+                                  <span className="text-xs">
+                                    {entry.lastTestSuccess ? `Ok (${entry.lastTestLatency}ms)` : "Failed"}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Untested</span>
+                              )}
+                            </TableCell>
+                            <TableCell className="text-right space-x-1 whitespace-nowrap">
+                              <Button size="sm" variant="outline" className="h-7 px-2.5" onClick={() => handleTestPool(entry.id)} disabled={testingPoolId !== null}>
+                                Test
+                              </Button>
+                              <Button size="sm" variant="outline" className="h-7 px-2.5" onClick={() => { setEditingPoolEntry(entry); setPoolDialogOpen(true); }}>
+                                Edit
+                              </Button>
+                              <Button size="sm" variant="destructive" className="h-7 px-2.5" onClick={() => handleDeletePool(entry.id)}>
+                                Delete
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <Card>
+              <CardHeader><CardTitle>Primary SMTP Health History</CardTitle></CardHeader>
+              <CardContent>
+                {healthLoading ? (
+                  <div className="space-y-2 max-h-[280px]">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="flex items-center gap-3 py-2">
+                        <Skeleton className="h-3 w-3 rounded-full" />
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-12" />
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+                    ))}
+                  </div>
+                ) : primaryHealth.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Connection&quot; above to check primary SMTP.</p>
+                ) : (
+                  <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1 no-scrollbar">
+                    {[...primaryHealth].reverse().slice(0, 10).map((item, index) => (
+                      <div key={index} className="rounded-md border p-3">
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
+                          <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
+                          <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
+                          <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
                         </div>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeDevice(sub.endpoint)}
-                          className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-bold shrink-0"
-                        >
-                          Remove
-                        </Button>
+                        {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
                       </div>
                     ))}
                   </div>
                 )}
-              </div>
+              </CardContent>
+            </Card>
 
-              <div className="pt-4 border-t border-zinc-850 flex justify-end">
-                <Button
-                  onClick={sendTestNotification}
-                  disabled={testingPush}
-                  variant="outline"
-                  className="border-zinc-800 text-zinc-300 hover:text-white"
-                >
-                  {testingPush ? "Sending..." : "Send Test Notification"}
-                </Button>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader><CardTitle>Change Password</CardTitle><CardDescription>Update your account password without changing active sessions.</CardDescription></CardHeader>
-        <CardContent className="space-y-4">
-          <PasswordField label="Current Password" value={passwords.currentPassword} visible={visible.currentPassword} error={passwordErrors.currentPassword} onToggle={() => setVisible((current) => ({ ...current, currentPassword: !current.currentPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, currentPassword: value }))} />
-          <div className="space-y-2">
-            <PasswordField label="New Password" value={passwords.newPassword} visible={visible.newPassword} error={passwordErrors.newPassword} onToggle={() => setVisible((current) => ({ ...current, newPassword: !current.newPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, newPassword: value }))} />
-            <div className="space-y-1">
-              <div className="h-2 overflow-hidden rounded-full bg-muted">
-                <div className="h-full transition-all" style={{ width: strength.width, backgroundColor: strength.barColor }} />
-              </div>
-              <p className="text-xs" style={{ color: strength.textColor }}>{strength.label}</p>
-            </div>
+            <Card>
+              <CardHeader><CardTitle>Fallback SMTP Health History</CardTitle></CardHeader>
+              <CardContent>
+                {healthLoading ? (
+                  <div className="space-y-2 max-h-[280px]">
+                    {Array.from({ length: 3 }).map((_, index) => (
+                      <div key={index} className="flex items-center gap-3 py-2">
+                        <Skeleton className="h-3 w-3 rounded-full" />
+                        <Skeleton className="h-4 w-20" />
+                        <Skeleton className="h-4 w-12" />
+                        <Skeleton className="h-4 w-32" />
+                      </div>
+                    ))}
+                  </div>
+                ) : secondaryHealth.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Fallback Connection&quot; to check backup SMTP.</p>
+                ) : (
+                  <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1 no-scrollbar">
+                    {[...secondaryHealth].reverse().slice(0, 10).map((item, index) => (
+                      <div key={index} className="rounded-md border p-3">
+                        <div className="flex flex-wrap items-center gap-3 text-sm">
+                          <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
+                          <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
+                          <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
+                          <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
+                        </div>
+                        {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
-          <PasswordField label="Confirm New Password" value={passwords.confirmPassword} visible={visible.confirmPassword} error={passwordErrors.confirmPassword} onToggle={() => setVisible((current) => ({ ...current, confirmPassword: !current.confirmPassword }))} onChange={(value) => setPasswords((current) => ({ ...current, confirmPassword: value }))} />
-          <div className="flex justify-end">
-            <Button onClick={updatePassword} disabled={changingPassword}>
-              {changingPassword ? (<><Loader2 className="h-4 w-4 animate-spin" />Updating...</>) : "Update Password"}
+        </TabsContent>
+
+        <TabsContent value="app" className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">📱 Mobile App</CardTitle>
+              <CardDescription>Install Custom Mail as a progressive web app on your device.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-850 p-4">
+                <div>
+                  <div className="font-bold text-sm text-zinc-100">Status</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">
+                    {isInstalled ? (
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1">✅ Installed as PWA on this device</span>
+                    ) : (
+                      <span className="text-zinc-500">Not installed</span>
+                    )}
+                  </div>
+                </div>
+                {!isInstalled && (
+                  <Button
+                    onClick={() => window.dispatchEvent(new Event("trigger-pwa-install"))}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                  >
+                    Install App
+                  </Button>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">🔔 Push Notifications</CardTitle>
+              <CardDescription>Get notified when emails are sent, scheduled sends complete, or emails fail.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between rounded-xl bg-zinc-900 border border-zinc-850 p-4">
+                <div>
+                  <div className="font-bold text-sm text-zinc-100">Status</div>
+                  <div className="text-xs text-zinc-400 mt-0.5">
+                    {notificationsEnabled ? (
+                      <span className="text-emerald-400 font-semibold flex items-center gap-1">🟢 Enabled</span>
+                    ) : (
+                      <span className="text-zinc-500">Not enabled</span>
+                    )}
+                  </div>
+                </div>
+                {!notificationsEnabled && (
+                  <Button
+                    onClick={enableNotifications}
+                    disabled={subscribing}
+                    className="bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                  >
+                    {subscribing ? "Enabling..." : "Enable Notifications"}
+                  </Button>
+                )}
+              </div>
+
+              {notificationsEnabled && (
+                <div className="space-y-4 pt-2 border-t border-zinc-850">
+                  <div className="space-y-2">
+                    <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Notify me when:</Label>
+                    <div className="space-y-2 pl-1">
+                      <div className="flex items-center gap-2 text-sm text-zinc-300">
+                        <span className="text-emerald-400">✅</span> Email sent successfully
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-zinc-300">
+                        <span className="text-emerald-400">✅</span> Scheduled email fires
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-zinc-300">
+                        <span className="text-emerald-400">✅</span> Bulk send completes
+                      </div>
+                      <div className="flex items-center gap-2 text-sm text-zinc-300">
+                        <span className="text-emerald-400">✅</span> Email fails
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-2 border-t border-zinc-850">
+                    <Label className="text-zinc-300 font-semibold text-xs uppercase tracking-wider">Active Devices ({subscriptions.length})</Label>
+                    {loadingSubscriptions ? (
+                      <div className="space-y-2">
+                        <Skeleton className="h-10 w-full rounded-md" />
+                      </div>
+                    ) : subscriptions.length === 0 ? (
+                      <p className="text-xs text-zinc-500 italic pl-1">No active devices registered.</p>
+                    ) : (
+                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                        {subscriptions.map((sub) => (
+                          <div key={sub.id} className="flex items-center justify-between rounded-lg bg-zinc-900/60 border border-zinc-850 p-3 text-xs">
+                            <div className="min-w-0 flex-1 mr-3">
+                              <div className="font-semibold text-zinc-200 flex items-center gap-1.5">
+                                <span>📱 {sub.deviceName || sub.platform || "Device"}</span>
+                                {sub.platform && <span className="px-1.5 py-0.5 rounded bg-zinc-850 text-[10px] text-zinc-400">{sub.platform}</span>}
+                              </div>
+                              <div className="text-[10px] text-zinc-500 mt-1 truncate">
+                                Added: {new Date(sub.createdAt).toLocaleDateString()} · Last active: {new Date(sub.lastUsedAt).toLocaleDateString()}
+                              </div>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeDevice(sub.endpoint)}
+                              className="text-red-400 hover:text-red-300 hover:bg-red-500/10 font-bold shrink-0"
+                            >
+                              Remove
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-4 border-t border-zinc-850 flex justify-end">
+                    <Button
+                      onClick={sendTestNotification}
+                      disabled={testingPush}
+                      variant="outline"
+                      className="border-zinc-800 text-zinc-300 hover:text-white"
+                    >
+                      {testingPush ? "Sending..." : "Send Test Notification"}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      <Dialog open={showResetAlert} onOpenChange={setShowResetAlert}>
+        <DialogContent className="sm:max-w-md border-red-500/20 bg-card">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-500">
+              <span>⚠️</span> Password Reset Required
+            </DialogTitle>
+            <DialogDescription className="pt-2 text-sm leading-relaxed text-muted-foreground">
+              Your administrator has flagged your account for a security password reset.
+              <br /><br />
+              Until you update your password, <strong>access to the rest of the application is restricted.</strong> Please set a new password in the settings.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="mt-4 flex sm:justify-end gap-2">
+            <Button
+              className="bg-red-600 hover:bg-red-500 text-white font-bold"
+              onClick={() => {
+                setShowResetAlert(false);
+                goToPassword();
+              }}
+            >
+              Go to Password Form
             </Button>
-          </div>
-        </CardContent>
-      </Card>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-      <div className="grid gap-5 md:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Primary SMTP Health History</CardTitle></CardHeader>
-          <CardContent>
-            {healthLoading ? (
-              <div className="space-y-2 max-h-[280px]">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="flex items-center gap-3 py-2">
-                    <Skeleton className="h-3 w-3 rounded-full" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-12" />
-                    <Skeleton className="h-4 w-32" />
-                  </div>
-                ))}
-              </div>
-            ) : primaryHealth.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Connection&quot; above to check primary SMTP.</p>
-            ) : (
-              <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
-                {[...primaryHealth].reverse().slice(0, 10).map((item, index) => (
-                  <div key={index} className="rounded-md border p-3">
-                    <div className="flex flex-wrap items-center gap-3 text-sm">
-                      <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
-                      <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
-                      <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
-                      <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
-                    </div>
-                    {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <Dialog open={poolDialogOpen} onOpenChange={setPoolDialogOpen}>
+        <DialogContent className="sm:max-w-lg bg-card">
+          <DialogHeader>
+            <DialogTitle>{editingPoolEntry ? "Edit SMTP Server" : "Add SMTP Server"}</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSavePoolEntry} className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label htmlFor="poolLabel">Label</Label>
+              <Input 
+                id="poolLabel"
+                value={poolFormState.label} 
+                onChange={(e) => setPoolFormState({ ...poolFormState, label: e.target.value })}
+                placeholder="e.g. Personal Gmail" 
+                required 
+              />
+            </div>
 
-        <Card>
-          <CardHeader><CardTitle>Fallback SMTP Health History</CardTitle></CardHeader>
-          <CardContent>
-            {healthLoading ? (
-              <div className="space-y-2 max-h-[280px]">
-                {Array.from({ length: 3 }).map((_, index) => (
-                  <div key={index} className="flex items-center gap-3 py-2">
-                    <Skeleton className="h-3 w-3 rounded-full" />
-                    <Skeleton className="h-4 w-20" />
-                    <Skeleton className="h-4 w-12" />
-                    <Skeleton className="h-4 w-32" />
-                  </div>
-                ))}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="col-span-2 space-y-1.5">
+                <Label htmlFor="poolHost">Host</Label>
+                <Input 
+                  id="poolHost"
+                  value={poolFormState.host} 
+                  onChange={(e) => setPoolFormState({ ...poolFormState, host: e.target.value })}
+                  placeholder="smtp.gmail.com" 
+                  required 
+                />
               </div>
-            ) : secondaryHealth.length === 0 ? (
-              <p className="text-sm text-muted-foreground">No tests run yet. Click &quot;Test Fallback Connection&quot; to check backup SMTP.</p>
-            ) : (
-              <div className="max-h-[280px] space-y-2 overflow-y-auto pr-1">
-                {[...secondaryHealth].reverse().slice(0, 10).map((item, index) => (
-                  <div key={index} className="rounded-md border p-3">
-                    <div className="flex flex-wrap items-center gap-3 text-sm">
-                      <span className={cn("h-2.5 w-2.5 rounded-full", item.success ? "bg-sent" : "bg-failed")} />
-                      <span className="font-medium">{item.success ? "Connected" : "Failed"}</span>
-                      <span className="text-muted-foreground">{item.success ? `${item.latencyMs}ms` : "-"}</span>
-                      <span className="ml-auto text-muted-foreground">{formatHealthTime(item.testedAt)}</span>
-                    </div>
-                    {!item.success && item.error && <p className="mt-2 pl-5 text-sm text-muted-foreground">{item.error}</p>}
-                  </div>
-                ))}
+              <div className="space-y-1.5">
+                <Label htmlFor="poolPort">Port</Label>
+                <Input 
+                  id="poolPort"
+                  type="number" 
+                  value={poolFormState.port} 
+                  onChange={(e) => setPoolFormState({ ...poolFormState, port: Number(e.target.value) })}
+                  required 
+                />
               </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="poolUsername">Username</Label>
+                <Input 
+                  id="poolUsername"
+                  value={poolFormState.username} 
+                  onChange={(e) => setPoolFormState({ ...poolFormState, username: e.target.value })}
+                  placeholder="API Key or email" 
+                  required 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="poolPassword">Password</Label>
+                <div className="relative">
+                  <Input 
+                    id="poolPassword"
+                    type={showPassword ? "text" : "password"} 
+                    value={poolFormState.password} 
+                    onChange={(e) => setPoolFormState({ ...poolFormState, password: e.target.value })}
+                    placeholder={editingPoolEntry ? "Leave empty to keep saved" : "Password"} 
+                    required={!editingPoolEntry} 
+                    className="pr-9"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-0 top-0 h-9 w-9 text-muted-foreground hover:text-foreground"
+                    onClick={() => setShowPassword(!showPassword)}
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="poolFromName">From Name</Label>
+                <Input 
+                  id="poolFromName"
+                  value={poolFormState.fromName} 
+                  onChange={(e) => setPoolFormState({ ...poolFormState, fromName: e.target.value })}
+                  placeholder="Sender Name" 
+                  required 
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="poolFromEmail">From Email</Label>
+                <Input 
+                  id="poolFromEmail"
+                  type="email"
+                  value={poolFormState.fromEmail} 
+                  onChange={(e) => setPoolFormState({ ...poolFormState, fromEmail: e.target.value })}
+                  placeholder="sender@domain.com" 
+                  required 
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="poolEncryption">Encryption</Label>
+                <Select 
+                  value={poolFormState.encryption} 
+                  onValueChange={(val) => setPoolFormState({ ...poolFormState, encryption: val })}
+                >
+                  <SelectTrigger id="poolEncryption">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="TLS">TLS</SelectItem>
+                    <SelectItem value="SSL">SSL</SelectItem>
+                    <SelectItem value="NONE">None</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center justify-between border rounded-lg px-3 py-2 bg-muted/20">
+                <Label htmlFor="poolRejectUnauth" className="text-xs cursor-pointer">Reject Unauthorized</Label>
+                <Switch 
+                  id="poolRejectUnauth"
+                  checked={poolFormState.rejectUnauth} 
+                  onCheckedChange={(checked) => setPoolFormState({ ...poolFormState, rejectUnauth: checked })}
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="flex items-center justify-between border rounded-lg px-3 py-2 bg-muted/20">
+                <Label htmlFor="poolIsPrimary" className="text-xs cursor-pointer">Set as Primary</Label>
+                <Switch 
+                  id="poolIsPrimary"
+                  checked={poolFormState.isPrimary} 
+                  onCheckedChange={(checked) => setPoolFormState({ ...poolFormState, isPrimary: checked, isFallback: checked ? false : poolFormState.isFallback })}
+                />
+              </div>
+              <div className="flex items-center justify-between border rounded-lg px-3 py-2 bg-muted/20">
+                <Label htmlFor="poolIsFallback" className="text-xs cursor-pointer">Set as Fallback</Label>
+                <Switch 
+                  id="poolIsFallback"
+                  checked={poolFormState.isFallback} 
+                  onCheckedChange={(checked) => setPoolFormState({ ...poolFormState, isFallback: checked, isPrimary: checked ? false : poolFormState.isPrimary })}
+                />
+              </div>
+            </div>
+
+            <Button type="submit" className="w-full mt-2 font-bold">
+              {editingPoolEntry ? "Save Changes" : "Add SMTP Server"}
+            </Button>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { fromJson, toStringArray } from "@/lib/json-fields";
+import { smtpPoolRecord } from "@/lib/smtp-pool";
 
 export function userRecord(row: any) {
   if (!row) return row;
@@ -15,6 +16,7 @@ export function userRecord(row: any) {
       encryption: row.smtpEncryption,
       rejectUnauth: row.smtpRejectUnauth
     },
+    smtpPool: Array.isArray(row.smtpPool) ? row.smtpPool.map(smtpPoolRecord) : row.smtpPool,
     smtpHealthLog: row.smtpHealthLogs ?? []
   };
 }

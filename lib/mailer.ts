@@ -1,11 +1,13 @@
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
+import type { SmtpPool } from "@prisma/client";
 import { access } from "fs/promises";
 import path from "path";
 import { prisma } from "@/lib/prisma";
 import { decryptText } from "@/lib/encrypt";
 import { resolveUserAttachmentPath } from "@/lib/security";
 import { logAudit } from "@/lib/audit";
+import { toJson } from "@/lib/json-fields";
 
 export interface SendPayload {
   to: string[];
@@ -38,6 +40,8 @@ type SmtpConfig = {
   encryption?: string | null;
   rejectUnauth?: boolean | null;
 };
+
+type SmtpSource = "global" | "admin_assigned" | "pool" | "legacy";
 
 export type UserWithSmtp = {
   id?: string;
@@ -97,6 +101,100 @@ function createTransporterFromConfig(config: SmtpConfig) {
       rejectUnauthorized: config.rejectUnauth !== false
     }
   });
+}
+
+function buildSmtpConfig(pool: SmtpPool): SmtpConfig {
+  return {
+    host: pool.host,
+    port: pool.port,
+    username: pool.username,
+    passwordEnc: pool.passwordEnc,
+    fromName: pool.fromName,
+    fromEmail: pool.fromEmail,
+    encryption: pool.encryption,
+    rejectUnauth: pool.rejectUnauth
+  };
+}
+
+function userToSecondarySmtpConfig(user: UserWithSmtp): SmtpConfig | null {
+  if (!user.smtpSecondaryHost || !user.smtpSecondaryPassEnc) return null;
+  return {
+    host: user.smtpSecondaryHost,
+    port: user.smtpSecondaryPort,
+    username: user.smtpSecondaryUser,
+    passwordEnc: user.smtpSecondaryPassEnc,
+    fromName: user.smtpSecondaryFromName,
+    fromEmail: user.smtpSecondaryFromEmail,
+    encryption: user.smtpSecondaryEncryption,
+    rejectUnauth: user.smtpSecondaryRejectUnauth
+  };
+}
+
+export async function resolveSmtpConfig(userId: string): Promise<{
+  primary: SmtpConfig;
+  fallback: SmtpConfig | null;
+  source: SmtpSource;
+}> {
+  const systemConfig = await prisma.systemConfig.findFirst();
+  if (systemConfig?.globalSmtpActive) {
+    const globalSmtp = {
+      host: systemConfig.smtpHost,
+      port: systemConfig.smtpPort,
+      username: systemConfig.smtpUsername,
+      passwordEnc: systemConfig.smtpPasswordEnc,
+      fromName: systemConfig.smtpFromName,
+      fromEmail: systemConfig.smtpFromEmail,
+      encryption: systemConfig.smtpEncryption,
+      rejectUnauth: systemConfig.smtpRejectUnauth
+    };
+    if (!hasConfig(globalSmtp)) {
+      throw new Error("Global SMTP override is active but not fully configured");
+    }
+    return { primary: globalSmtp, fallback: null, source: "global" };
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    include: { smtpPool: true }
+  });
+  if (!user) throw new Error("User not found");
+
+  if (user.adminSmtpLocked) {
+    const adminPool = user.smtpPool.filter((smtp) => smtp.isAdminAssigned && smtp.isActive);
+    const primary = adminPool.find((smtp) => smtp.isPrimary);
+    const fallback = adminPool.find((smtp) => smtp.isFallback) ?? null;
+    if (!primary) {
+      throw new Error("Admin locked SMTP but no primary assigned. Contact administrator.");
+    }
+    return {
+      primary: buildSmtpConfig(primary),
+      fallback: fallback ? buildSmtpConfig(fallback) : null,
+      source: "admin_assigned"
+    };
+  }
+
+  const userPool = user.smtpPool.filter((smtp) => !smtp.isAdminAssigned && smtp.isActive);
+  if (userPool.length > 0) {
+    const primary = userPool.find((smtp) => smtp.isPrimary);
+    const fallback = userPool.find((smtp) => smtp.isFallback) ?? null;
+    if (primary) {
+      return {
+        primary: buildSmtpConfig(primary),
+        fallback: fallback ? buildSmtpConfig(fallback) : null,
+        source: "pool"
+      };
+    }
+  }
+
+  const legacyPrimary = userToSmtpConfig(user);
+  if (!hasConfig(legacyPrimary)) {
+    throw new Error("SMTP is not configured. Go to Settings to add your SMTP credentials.");
+  }
+  return {
+    primary: legacyPrimary,
+    fallback: user.smtpFallbackEnabled ? userToSecondarySmtpConfig(user) : null,
+    source: "legacy"
+  };
 }
 
 export function createTransporter(user: UserWithSmtp) {
@@ -279,37 +377,17 @@ export async function sendEmailWithFallback({
   primaryError?: string;
   fallbackError?: string;
 }> {
-  // Step 1: Fetch user with SMTP config
-  const user = await prisma.user.findUnique({
-    where: { id: userId }
-  });
-  if (!user) {
+  let resolved: Awaited<ReturnType<typeof resolveSmtpConfig>>;
+  try {
+    resolved = await resolveSmtpConfig(userId);
+  } catch (error) {
     return {
       success: false,
       usedFallback: false,
-      error: "User not found"
+      error: error instanceof Error ? error.message : String(error)
     };
   }
-
-  // Step 2: Check global SMTP override
-  const systemConfig = await prisma.systemConfig.findFirst();
-  
-  let primaryConfig: SmtpConfig;
-  if (systemConfig?.globalSmtpActive) {
-    primaryConfig = {
-      host: systemConfig.smtpHost,
-      port: systemConfig.smtpPort,
-      username: systemConfig.smtpUsername,
-      passwordEnc: systemConfig.smtpPasswordEnc,
-      fromName: systemConfig.smtpFromName,
-      fromEmail: systemConfig.smtpFromEmail,
-      encryption: systemConfig.smtpEncryption,
-      rejectUnauth: systemConfig.smtpRejectUnauth
-    };
-    // No fallback when global override is active
-  } else {
-    primaryConfig = userToSmtpConfig(user);
-  }
+  const { primary: primaryConfig, fallback: fallbackConfig, source } = resolved;
 
   const recipientEmailStr = to.join(", ");
 
@@ -347,14 +425,10 @@ export async function sendEmailWithFallback({
 
     // Step 4: Decide if fallback should be tried
     const shouldFallback = 
-      !systemConfig?.globalSmtpActive &&  
-      // no fallback on global override
-      user.smtpFallbackEnabled &&
-      // user has enabled fallback
       isFallbackTriggerError(primaryError) &&
       // error is fallback-worthy
-      user.smtpSecondaryHost != null;
-      // secondary SMTP is configured
+      fallbackConfig != null;
+      // fallback SMTP is configured for the resolved source
 
     if (!shouldFallback) {
       // Log to SmtpFallbackLog (fallbackUsed: false)
@@ -367,6 +441,7 @@ export async function sendEmailWithFallback({
           primaryErrorCode: extractSmtpCode(errorMsg),
           fallbackUsed: false,
           fallbackSuccess: false,
+          metadata: toJson({ source })
         }
       });
 
@@ -382,20 +457,12 @@ export async function sendEmailWithFallback({
     console.log(`[mailer] Attempting fallback SMTP...`);
 
     try {
-      const secondaryTransporter = createSecondaryTransporter(user);
-      if (!secondaryTransporter) {
-        throw new Error("Failed to create secondary transporter (missing config)");
-      }
-      
-      const secondaryConfig = {
-        fromName: user.smtpSecondaryFromName,
-        fromEmail: user.smtpSecondaryFromEmail
-      };
+      const secondaryTransporter = createTransporterFromConfig(fallbackConfig!);
 
       const normalized = attachments ? await normalizeAttachments(userId, attachments) : undefined;
 
       const result = await secondaryTransporter.sendMail({
-        from: `"${secondaryConfig.fromName || secondaryConfig.fromEmail}" <${secondaryConfig.fromEmail}>`,
+        from: `"${fallbackConfig!.fromName || fallbackConfig!.fromEmail}" <${fallbackConfig!.fromEmail}>`,
         to,
         subject,
         html,
@@ -421,6 +488,7 @@ export async function sendEmailWithFallback({
           fallbackUsed: true,
           fallbackSuccess: true,
           fallbackAttemptAt: new Date(),
+          metadata: toJson({ source })
         }
       });
 
@@ -432,7 +500,8 @@ export async function sendEmailWithFallback({
           primaryError: errorMsg,
           recipientEmail: recipientEmailStr,
           primarySmtp: primaryConfig.host,
-          secondarySmtp: user.smtpSecondaryHost
+          secondarySmtp: fallbackConfig?.host,
+          source
         }
       );
 
@@ -441,7 +510,8 @@ export async function sendEmailWithFallback({
         userId,
         {
           recipientEmail: recipientEmailStr,
-          secondarySmtp: user.smtpSecondaryHost
+          secondarySmtp: fallbackConfig?.host,
+          source
         }
       );
 
@@ -471,6 +541,7 @@ export async function sendEmailWithFallback({
           fallbackSuccess: false,
           fallbackError: fallbackErrorMsg,
           fallbackAttemptAt: new Date(),
+          metadata: toJson({ source })
         }
       });
 
@@ -480,7 +551,8 @@ export async function sendEmailWithFallback({
         {
           recipientEmail: recipientEmailStr,
           primaryError: errorMsg,
-          fallbackError: fallbackErrorMsg
+          fallbackError: fallbackErrorMsg,
+          source
         }
       );
 

@@ -9,10 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Eye, EyeOff } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   async function submit(formData: FormData) {
     setLoading(true);
     try {
@@ -41,7 +44,22 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         <form action={submit} className="space-y-4">
           {mode === "signup" && <div className="space-y-2"><Label htmlFor="name">Name</Label><Input id="name" name="name" required /></div>}
           <div className="space-y-2"><Label htmlFor="email">Email</Label><Input id="email" name="email" type="email" required /></div>
-          <div className="space-y-2"><Label htmlFor="password">Password</Label><Input id="password" name="password" type="password" required minLength={mode === "signup" ? 8 : 1} /></div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label htmlFor="password">Password</Label>
+              {mode === "login" && <ForgotPasswordDialog />}
+            </div>
+            <div className="relative">
+              <Input id="password" name="password" type={showPassword ? "text" : "password"} required minLength={mode === "signup" ? 8 : 1} className="pr-10" />
+              <button
+                type="button"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                onClick={() => setShowPassword(!showPassword)}
+              >
+                {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </button>
+            </div>
+          </div>
           <Button disabled={loading} className="w-full">{loading ? "Please wait..." : mode === "login" ? "Log in" : "Sign up"}</Button>
         </form>
         {mode === "signup" ? (
@@ -61,5 +79,30 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
         )}
       </CardContent>
     </Card>
+  );
+}
+
+function ForgotPasswordDialog() {
+  return (
+    <Dialog>
+      <DialogTrigger asChild>
+        <button
+          type="button"
+          className="text-xs text-primary hover:underline"
+        >
+          Forgot password?
+        </button>
+      </DialogTrigger>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>Forgot Password?</DialogTitle>
+          <DialogDescription className="pt-2 text-zinc-400">
+            For security reasons, password resets are handled manually by the system administrator.
+            <br /><br />
+            Please email the administrator at <a href="mailto:vt.gowreesh43@gmail.com" className="text-primary hover:underline font-semibold">vt.gowreesh43@gmail.com</a> to request a new password.
+          </DialogDescription>
+        </DialogHeader>
+      </DialogContent>
+    </Dialog>
   );
 }
