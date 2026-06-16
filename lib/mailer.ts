@@ -89,6 +89,9 @@ function hasConfig(config: SmtpConfig) {
 function createTransporterFromConfig(config: SmtpConfig) {
   if (!hasConfig(config)) throw new Error("SMTP config is incomplete");
   return nodemailer.createTransport({
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 500,
     host: config.host!,
     port: config.port!,
     secure: config.encryption === "SSL" || config.port === 465,

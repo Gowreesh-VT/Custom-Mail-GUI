@@ -4,7 +4,7 @@
   "private": true,
   "description": "Custom Mail Sender and Tracker built with Next.js, Prisma, and Tailwind CSS",
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev --turbo",
     "build": "next build --webpack",
     "start": "next start",
     "lint": "eslint .",

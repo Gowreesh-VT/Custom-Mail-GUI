@@ -38,8 +38,8 @@ export default function LandingPage() {
           100% { top: 0%; opacity: 0.8; }
         }
         @keyframes pulse-glow {
-          0%, 100% { opacity: 0.3; filter: blur(80px); }
-          50% { opacity: 0.6; filter: blur(110px); }
+          0%, 100% { opacity: 0.3; transform: scale(1); }
+          50% { opacity: 0.6; transform: scale(1.05); }
         }
         .animate-float {
           animation: float 5s ease-in-out infinite;
@@ -56,7 +56,7 @@ export default function LandingPage() {
       `}</style>
 
       {/* Decorative Blur Orbs */}
-      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-emerald-500/10 animate-pulse-glow pointer-events-none" />
+      <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] rounded-full bg-emerald-500/10 animate-pulse-glow blur-[100px] pointer-events-none" />
       <div className="absolute top-[40%] right-[-10%] w-[600px] h-[600px] rounded-full bg-blue-500/10 blur-[150px] pointer-events-none" />
       <div className="absolute bottom-[-10%] left-[20%] w-[450px] h-[450px] rounded-full bg-purple-500/10 blur-[130px] pointer-events-none" />
 

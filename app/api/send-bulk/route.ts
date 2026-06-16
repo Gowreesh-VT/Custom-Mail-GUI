@@ -1,5 +1,7 @@
 import Papa from "papaparse";
 import { type NextRequest } from "next/server";
+
+export const maxDuration = 300; // Allow up to 5 minutes for bulk sending
 import { requireUser } from "@/lib/api";
 import { sendEmailWithFallback } from "@/lib/mailer";
 import { applyMergeFields, jsonError } from "@/lib/utils";

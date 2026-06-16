@@ -1,5 +1,7 @@
 import { type NextRequest } from "next/server";
 import dns from "dns";
+
+export const maxDuration = 300; // Allow up to 5 minutes for bulk validation
 import { requireUser } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { jsonError } from "@/lib/utils";
