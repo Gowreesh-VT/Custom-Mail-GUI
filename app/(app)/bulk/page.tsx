@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import Papa from "papaparse";
-import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowRight } from "lucide-react";
+import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowRight, Download, RotateCcw, ShieldCheck, BarChart2, Clock, Timer, Zap, FileText, FolderOpen, Laptop, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -66,12 +67,54 @@ export default function BulkPage() {
   const [qrWarningOpen, setQrWarningOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
+  // Batching and Anti-Duplicate Resume Engine
+  const [batchSize, setBatchSize] = useState(30);
+  const [skipAlreadySent, setSkipAlreadySent] = useState(true);
+  const [processedEmails, setProcessedEmails] = useState<Set<string>>(new Set());
+  const [currentBatchInfo, setCurrentBatchInfo] = useState<{ current: number; total: number } | null>(null);
+  const bulkJobIdRef = useRef<string>("");
+
+  // Live ETA and Timer Engine
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [elapsedSeconds, setElapsedSeconds] = useState<number>(0);
+
+  // Personalized Letter & Local PDF Engine (Localhost)
+  const [attachLetters, setAttachLetters] = useState(false);
+  const [letterMode, setLetterMode] = useState<"generate_docx" | "local_pdf_folder">("generate_docx");
+  const [defaultDocxName, setDefaultDocxName] = useState("MIC_Letter_Normal.docx");
+  const [entrepreneurshipDocxName, setEntrepreneurshipDocxName] = useState("MIC_Letter_Entrepreneurship.docx");
+  const [pdfFolder, setPdfFolder] = useState("generated_pdf");
+  const [defaultDocxFile, setDefaultDocxFile] = useState<File | null>(null);
+  const [entrepreneurshipDocxFile, setEntrepreneurshipDocxFile] = useState<File | null>(null);
+  const [letterPreviewLoading, setLetterPreviewLoading] = useState(false);
+  const [letterPreviewPdf, setLetterPreviewPdf] = useState<string | null>(null);
+  const [letterPreviewOpen, setLetterPreviewOpen] = useState(false);
+  const [isLocalhostEnv, setIsLocalhostEnv] = useState(true);
+
   // Validation & Deduplication States
   const [validationLoading, setValidationLoading] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [validationReport, setValidationReport] = useState<any>(null);
   const [checkSentGlobally, setCheckSentGlobally] = useState(false);
-  const [checkSentHistory, setCheckSentHistory] = useState(false);
+  const [checkSentHistory, setCheckSentHistory] = useState(true);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1" ||
+        window.location.hostname === "::1";
+      setIsLocalhostEnv(isLocal);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!sending || !startTime) return;
+    const timer = setInterval(() => {
+      setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [sending, startTime]);
 
   useEffect(() => {
     let ignore = false;
@@ -105,7 +148,9 @@ export default function BulkPage() {
       setFullTemplate(template);
       const nextMap: Record<string, string> = {};
       (template.mergeFields || []).filter((field: string) => !/^qr_[a-z_]+$/.test(field)).forEach((field: string) => {
-        nextMap[field] = columns.includes(field) ? field : "";
+        const exactMatch = columns.find((c) => c === field);
+        const caseMatch = columns.find((c) => c.toLowerCase().trim() === field.toLowerCase().trim());
+        nextMap[field] = exactMatch || caseMatch || "";
       });
       setColumnMap(nextMap);
     }).catch((error) => toast.error(error.message));
@@ -118,13 +163,23 @@ export default function BulkPage() {
       if (!nextFile) return;
       const parsed = Papa.parse<Record<string, string>>(await nextFile.text(), { header: true, skipEmptyLines: true });
       const fields = parsed.meta.fields || [];
-      if (!fields.includes("email")) {
+      const emailKey = fields.find((f) => {
+        const clean = f.toLowerCase().trim();
+        return clean === "email" || clean === "e-mail" || clean === "email address" || clean === "recipient" || clean === "to";
+      });
+      if (!emailKey) {
         setRows([]);
         setColumns(fields);
-        return toast.error('CSV must include an "email" column');
+        return toast.error('CSV must include an "email" or "Email" column');
       }
       setColumns(fields);
-      setRows(parsed.data.filter((row) => row.email));
+      const cleanRows = parsed.data
+        .filter((row) => row[emailKey] && String(row[emailKey]).trim())
+        .map((row) => ({
+          ...row,
+          email: String(row[emailKey]).trim()
+        }));
+      setRows(cleanRows);
       setStep(2);
     } finally {
       setParsingCsv(false);
@@ -342,51 +397,142 @@ export default function BulkPage() {
     }, 100);
   }
 
-  async function sendBulk(sendAnyway = false) {
-    if (!canSend || !file || !fullTemplate) return toast.error("Complete all steps before sending");
+  const unsentRows = useMemo(() => {
+    return rows.filter((r) => {
+      const email = String(r.email || "").toLowerCase().trim();
+      return email && !processedEmails.has(email);
+    });
+  }, [rows, processedEmails]);
+
+  async function sendBulk(sendAnyway = false, resumeOnly = false) {
+    if (!canSend || !fullTemplate) return toast.error("Complete all steps before sending");
     if (hasMissingQrConfig && !sendAnyway) {
       setQrWarningOpen(true);
       return;
     }
+
+    const targetRows = resumeOnly ? unsentRows : rows;
+    if (targetRows.length === 0) {
+      toast.info("All recipients in this list have already been sent or processed.");
+      return;
+    }
+
     setSending(true);
     setQrWarningOpen(false);
     setHasRun(true);
-    setLogsCleared(false);
-    setLogs([]);
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const form = new FormData();
-    form.set("csv", file);
-    form.set("templateId", fullTemplate._id);
-    form.set("columnMap", JSON.stringify(columnMap));
-    form.set("qrConfig", JSON.stringify(qrConfig));
-    form.set("qrFieldConfigs", JSON.stringify(qrFieldConfigs));
-    if (certificateConfig) form.set("certificateConfig", JSON.stringify(certificateConfig));
-    form.set("delayMs", String(delayMs));
+    setStartTime(Date.now());
+    setElapsedSeconds(0);
+
+    if (!resumeOnly) {
+      setLogsCleared(false);
+      setLogs([]);
+      setProcessedEmails(new Set());
+      bulkJobIdRef.current = crypto.randomUUID();
+    } else if (!bulkJobIdRef.current) {
+      bulkJobIdRef.current = crypto.randomUUID();
+    }
+
+    const currentCampaignId = bulkJobIdRef.current;
+
+    // Split target rows into manageable batches to prevent Vercel 300s timeout
+    const currentBatchSize = Math.max(5, batchSize || 30);
+    const chunks: Record<string, string>[][] = [];
+    for (let i = 0; i < targetRows.length; i += currentBatchSize) {
+      chunks.push(targetRows.slice(i, i + currentBatchSize));
+    }
+
+    let completedBatches = 0;
+    let aborted = false;
+
     try {
-      const res = await fetch("/api/send-bulk", { method: "POST", body: form, signal: controller.signal });
-      if (!res.body) return;
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-        for (const line of lines.filter(Boolean)) setLogs((current) => [JSON.parse(line), ...current].slice(0, 300));
+      for (let i = 0; i < chunks.length; i++) {
+        if (abortRef.current?.signal.aborted) {
+          aborted = true;
+          break;
+        }
+
+        const chunk = chunks[i];
+        setCurrentBatchInfo({ current: i + 1, total: chunks.length });
+
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        const form = new FormData();
+        form.set("rowsJson", JSON.stringify(chunk));
+        form.set("templateId", fullTemplate._id);
+        form.set("columnMap", JSON.stringify(columnMap));
+        form.set("qrConfig", JSON.stringify(qrConfig));
+        form.set("qrFieldConfigs", JSON.stringify(qrFieldConfigs));
+        if (certificateConfig) form.set("certificateConfig", JSON.stringify(certificateConfig));
+        if (attachLetters) {
+          form.set("letterConfig", JSON.stringify({
+            enabled: true,
+            mode: letterMode,
+            defaultTemplateName: defaultDocxName,
+            entrepreneurshipTemplateName: entrepreneurshipDocxName,
+            pdfFolder: pdfFolder
+          }));
+          if (defaultDocxFile) form.set("defaultDocx", defaultDocxFile);
+          if (entrepreneurshipDocxFile) form.set("entrepreneurshipDocx", entrepreneurshipDocxFile);
+        }
+        form.set("delayMs", String(delayMs));
+        form.set("bulkJobId", currentCampaignId);
+        form.set("skipAlreadySent", String(skipAlreadySent));
+        form.set("startIndex", String(resumeOnly ? (rows.length - targetRows.length + i * currentBatchSize) : i * currentBatchSize));
+        form.set("isLastBatch", String(i === chunks.length - 1));
+
+        try {
+          const res = await fetch("/api/send-bulk", { method: "POST", body: form, signal: controller.signal });
+          if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || `Server returned error (${res.status}) on batch ${i + 1}`);
+          }
+          if (!res.body) throw new Error("No response stream received from server");
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = "";
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop() || "";
+            for (const line of lines.filter(Boolean)) {
+              try {
+                const logObj = JSON.parse(line);
+                setLogs((current) => [logObj, ...current].slice(0, 500));
+                if (logObj.email) {
+                  const emailKey = String(logObj.email).toLowerCase().trim();
+                  if (logObj.type === "sent" || logObj.type === "skipped" || logObj.type === "failed") {
+                    setProcessedEmails((prev) => new Set([...prev, emailKey]));
+                  }
+                }
+              } catch {}
+            }
+          }
+          completedBatches++;
+        } catch (err: any) {
+          if (err.name === "AbortError" || controller.signal.aborted) {
+            aborted = true;
+            setLogs((current) => [{ type: "stopped", reason: "User stopped the campaign" }, ...current]);
+            toast.info("Bulk dispatch paused / stopped");
+            break;
+          } else {
+            toast.error(`Batch ${i + 1} interrupted: ${err.message}`);
+            setLogs((current) => [{ type: "failed", error: `Batch ${i + 1} interrupted: ${err.message}` }, ...current]);
+            break;
+          }
+        }
       }
-      toast.success("Bulk run finished");
-    } catch (error: any) {
-      if (error.name === "AbortError") {
-        setLogs((current) => [{ type: "stopped" }, ...current]);
-        toast.info("Bulk run stopped");
-      } else {
-        toast.error(error.message);
+
+      if (!aborted && completedBatches === chunks.length) {
+        toast.success("Bulk run finished successfully!");
       }
     } finally {
       setSending(false);
+      setCurrentBatchInfo(null);
       abortRef.current = null;
     }
   }
@@ -394,6 +540,23 @@ export default function BulkPage() {
   function stopSending() {
     abortRef.current?.abort();
     setSending(false);
+  }
+
+  function exportUnsentCsv() {
+    if (unsentRows.length === 0) {
+      toast.info("No unsent recipients to export");
+      return;
+    }
+    const csv = Papa.unparse(unsentRows);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `unsent_recipients_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success(`Exported ${unsentRows.length} unsent recipients`);
   }
 
   async function previewCertificate() {
@@ -411,17 +574,56 @@ export default function BulkPage() {
     setCertPreviewOpen(true);
   }
 
+  async function previewLetter() {
+    if (rows.length === 0) return toast.error("Upload a CSV with recipients first");
+    setLetterPreviewLoading(true);
+    try {
+      const sampleRow = rows[certPreviewRow] || rows[0];
+      const formData = new FormData();
+      formData.append("row", JSON.stringify(sampleRow));
+      formData.append("letterConfig", JSON.stringify({
+        enabled: true,
+        mode: letterMode,
+        defaultTemplateName: defaultDocxName,
+        entrepreneurshipTemplateName: entrepreneurshipDocxName,
+        pdfFolder: pdfFolder
+      }));
+      if (defaultDocxFile) formData.append("defaultDocx", defaultDocxFile);
+      if (entrepreneurshipDocxFile) formData.append("entrepreneurshipDocx", entrepreneurshipDocxFile);
+
+      const res = await fetch("/api/letters/preview", {
+        method: "POST",
+        body: formData
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || "Failed to generate letter preview");
+      }
+      setLetterPreviewPdf(data.pdfBase64);
+      setLetterPreviewOpen(true);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to preview letter");
+    } finally {
+      setLetterPreviewLoading(false);
+    }
+  }
+
   const stats = useMemo(() => {
     let sent = 0;
     let failed = 0;
+    let skipped = 0;
     let certs = 0;
     let failedCerts = 0;
+    let letters = 0;
+    let failedLetters = 0;
     let failedQrs = 0;
     const failureDetails: Array<{ email: string; reason: string; type: string; bothFailed?: boolean; primaryError?: string; fallbackError?: string }> = [];
 
     logs.forEach((log) => {
       if (log.type === "sent") {
         sent++;
+      } else if (log.type === "skipped") {
+        skipped++;
       } else if (log.type === "failed") {
         failed++;
         failureDetails.push({
@@ -439,6 +641,13 @@ export default function BulkPage() {
           reason: log.error || "Certificate PDF generation error",
           type: "Certificate Attachment"
         });
+      } else if (log.type === "letter_error") {
+        failedLetters++;
+        failureDetails.push({
+          email: log.recipient || "Unknown Recipient",
+          reason: log.error || "Letter generation/attachment error",
+          type: "Letter Document"
+        });
       } else if (log.type === "qr_error") {
         failedQrs++;
         failureDetails.push({
@@ -449,20 +658,75 @@ export default function BulkPage() {
       }
     });
 
-    const latestProgressLog = logs.find((l) => l.type === "sent" || l.type === "failed");
+    const latestProgressLog = logs.find((l) => l.type === "sent" || l.type === "failed" || l.type === "skipped");
     if (latestProgressLog) {
       certs = latestProgressLog.certificateCount || 0;
+      letters = latestProgressLog.letterCount || 0;
     }
 
     return {
       sent,
       failed,
+      skipped,
       certs,
       failedCerts,
+      letters,
+      failedLetters,
       failedQrs,
       failureDetails
     };
   }, [logs]);
+
+  const etaInfo = useMemo(() => {
+    const processed = stats.sent + stats.failed + stats.skipped;
+    const total = validRecipients;
+    const remaining = Math.max(0, total - processed);
+
+    const formatTime = (secs: number) => {
+      if (secs <= 0 || !Number.isFinite(secs)) return "0s";
+      const m = Math.floor(secs / 60);
+      const s = secs % 60;
+      if (m === 0) return `${s}s`;
+      return `${m}m ${s}s`;
+    };
+
+    const elapsedText = formatTime(elapsedSeconds);
+
+    if (!sending && !hasRun) {
+      return { etaText: null, speedText: null, elapsedText: null, remaining };
+    }
+
+    if (!sending && hasRun) {
+      return {
+        etaText: "Completed",
+        speedText: elapsedSeconds > 0 ? `${Math.round((processed / elapsedSeconds) * 60)}/min` : null,
+        elapsedText,
+        remaining
+      };
+    }
+
+    if (processed === 0 || elapsedSeconds < 2) {
+      const estimatedSecs = Math.round((remaining * (delayMs + 350)) / 1000);
+      const speed = Math.round(60000 / (delayMs + 350));
+      return {
+        etaText: `~${formatTime(estimatedSecs)}`,
+        speedText: `~${speed}/min`,
+        elapsedText,
+        remaining
+      };
+    }
+
+    const ratePerSec = processed / elapsedSeconds;
+    const speedMin = Math.round(ratePerSec * 60);
+    const remainingSecs = Math.round(remaining / ratePerSec);
+
+    return {
+      etaText: remaining === 0 ? "Finishing..." : `~${formatTime(remainingSecs)}`,
+      speedText: `${speedMin}/min`,
+      elapsedText,
+      remaining
+    };
+  }, [stats, validRecipients, sending, hasRun, elapsedSeconds, delayMs]);
 
   return (
     <div className="space-y-5">
@@ -587,6 +851,190 @@ export default function BulkPage() {
               ))}
               <div className="flex flex-col gap-3 md:flex-row md:items-end"><Label>Preview recipient<select className="mt-2 w-full rounded-md border bg-background p-2" value={certPreviewRow} onChange={(event) => setCertPreviewRow(Number(event.target.value))}>{rows.slice(0, 100).map((row, index) => <option key={index} value={index}>{row.email || `Row ${index + 1}`}</option>)}</select></Label><Button variant="outline" onClick={previewCertificate}>Preview Certificate</Button></div>
             </div>}
+
+            {/* Personalized Letter & Local PDF Engine Card */}
+            <div className="space-y-4 rounded-md border border-primary/20 bg-primary/5 p-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="space-y-1">
+                  <h3 className="flex items-center gap-2 font-semibold text-foreground">
+                    <FileText className="h-4 w-4 text-primary" />
+                    Personalized Letter / Local PDF Attachments
+                    <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 text-[10px] uppercase font-bold tracking-wider ml-1">
+                      <Laptop className="h-3 w-3 mr-1" />
+                      Localhost
+                    </Badge>
+                  </h3>
+                  <p className="text-xs text-muted-foreground">
+                    Generate individual merged DOCX/PDF letters per member or match pre-generated PDFs from a local directory.
+                  </p>
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={attachLetters}
+                    onChange={(e) => setAttachLetters(e.target.checked)}
+                    className="h-4 w-4 rounded border-primary"
+                  />
+                  <span>Enable Letter Attachments</span>
+                </label>
+              </div>
+
+              {attachLetters && (
+                <div className="space-y-4 pt-2 border-t border-primary/10">
+                  {/* Mode Selector */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setLetterMode("generate_docx")}
+                      className={`p-3 rounded-lg border text-left transition-colors flex flex-col gap-1.5 ${letterMode === "generate_docx" ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted/50"}`}
+                    >
+                      <div className="flex items-center gap-2 font-medium text-sm text-foreground">
+                        <Sparkles className="h-4 w-4 text-primary" />
+                        Generate from DOCX Template
+                      </div>
+                      <div className="text-xs">
+                        Auto-replaces [Name], [Reg_No], [Position], [Dept], and Dept Heads across Word document.
+                      </div>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setLetterMode("local_pdf_folder")}
+                      className={`p-3 rounded-lg border text-left transition-colors flex flex-col gap-1.5 ${letterMode === "local_pdf_folder" ? "border-primary bg-primary/10 text-foreground" : "border-border bg-card text-muted-foreground hover:bg-muted/50"}`}
+                    >
+                      <div className="flex items-center gap-2 font-medium text-sm text-foreground">
+                        <FolderOpen className="h-4 w-4 text-primary" />
+                        Match from Local PDF Directory
+                      </div>
+                      <div className="text-xs">
+                        Reads existing PDFs from folder (e.g. ./generated_pdf) matched by Reg No / Dept / Email.
+                      </div>
+                    </button>
+                  </div>
+
+                  {/* Mode 1 Settings: DOCX Generation */}
+                  {letterMode === "generate_docx" && (
+                    <div className="space-y-3 p-3 rounded-md bg-background/60 border text-xs">
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Standard DOCX Template Path or Upload</Label>
+                          <Input
+                            placeholder="MIC_Letter_Normal.docx"
+                            value={defaultDocxName}
+                            onChange={(e) => setDefaultDocxName(e.target.value)}
+                            className="text-xs"
+                          />
+                          <div className="pt-1">
+                            <input
+                              type="file"
+                              accept=".docx"
+                              id="defaultDocxFileInput"
+                              className="hidden"
+                              onChange={(e) => setDefaultDocxFile(e.target.files?.[0] || null)}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-[11px]"
+                              onClick={() => document.getElementById("defaultDocxFileInput")?.click()}
+                            >
+                              <Upload className="h-3 w-3 mr-1" />
+                              {defaultDocxFile ? defaultDocxFile.name : "Upload Custom Normal .docx"}
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <Label className="text-xs font-semibold">Entrepreneurship DOCX Template Path or Upload</Label>
+                          <Input
+                            placeholder="MIC_Letter_Entrepreneurship.docx"
+                            value={entrepreneurshipDocxName}
+                            onChange={(e) => setEntrepreneurshipDocxName(e.target.value)}
+                            className="text-xs"
+                          />
+                          <div className="pt-1">
+                            <input
+                              type="file"
+                              accept=".docx"
+                              id="entDocxFileInput"
+                              className="hidden"
+                              onChange={(e) => setEntrepreneurshipDocxFile(e.target.files?.[0] || null)}
+                            />
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-7 text-[11px]"
+                              onClick={() => document.getElementById("entDocxFileInput")?.click()}
+                            >
+                              <Upload className="h-3 w-3 mr-1" />
+                              {entrepreneurshipDocxFile ? entrepreneurshipDocxFile.name : "Upload Custom Ent .docx"}
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Mode 2 Settings: Local PDF Folder */}
+                  {letterMode === "local_pdf_folder" && (
+                    <div className="space-y-2 p-3 rounded-md bg-background/60 border text-xs">
+                      <Label className="text-xs font-semibold">Local PDF Folder Path</Label>
+                      <Input
+                        placeholder="generated_pdf"
+                        value={pdfFolder}
+                        onChange={(e) => setPdfFolder(e.target.value)}
+                        className="text-xs font-mono"
+                      />
+                      <p className="text-[11px] text-muted-foreground">
+                        Files in this directory will be matched against recipient registration numbers (e.g. <code>management_21bce1234.pdf</code> or <code>21bce1234.pdf</code>).
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Preview Letter Button */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+                    <div className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <Label className="text-xs">Preview Recipient:</Label>
+                      <select
+                        className="rounded border bg-background px-2 py-1 text-xs"
+                        value={certPreviewRow}
+                        onChange={(e) => setCertPreviewRow(Number(e.target.value))}
+                      >
+                        {rows.slice(0, 100).map((row, index) => (
+                          <option key={index} value={index}>
+                            {row.name || row.NAME || row.email || `Row ${index + 1}`} ({row.department || row.dept || "Member"})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      disabled={letterPreviewLoading}
+                      onClick={previewLetter}
+                      className="border-primary/30 hover:bg-primary/5 text-primary text-xs"
+                    >
+                      {letterPreviewLoading ? (
+                        <>
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                          Generating Letter...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="mr-1.5 h-3.5 w-3.5" />
+                          Preview Letter PDF
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <Button onClick={() => setStep(4)}>Continue to Preview</Button>
           </CardContent>
         </Card>
@@ -605,23 +1053,94 @@ export default function BulkPage() {
                         <>
                           <Loader2 className="h-5 w-5 animate-spin text-primary" />
                           <span>Sending Campaign in Progress...</span>
+                          {currentBatchInfo && (
+                            <Badge variant="secondary" className="ml-1 text-xs">
+                              Batch {currentBatchInfo.current} of {currentBatchInfo.total}
+                            </Badge>
+                          )}
+                        </>
+                      ) : unsentRows.length === 0 ? (
+                        <>
+                          <CheckCircle2 className="h-5 w-5 text-sent" />
+                          <span>Campaign Execution Finished (All Delivered)</span>
                         </>
                       ) : (
                         <>
-                          <CheckCircle2 className="h-5 w-5 text-sent" />
-                          <span>Campaign Execution Finished</span>
+                          <AlertCircle className="h-5 w-5 text-yellow-500" />
+                          <span>Campaign Paused / Incomplete ({unsentRows.length} unsent)</span>
                         </>
                       )}
                     </CardTitle>
                     <CardDescription>
-                      Real-time stats and status of the current bulk dispatch job.
+                      {sending 
+                        ? `Processing ${batchSize} emails per serverless batch to prevent timeouts.`
+                        : `Real-time stats and dispatch status for campaign ${bulkJobIdRef.current ? `#${bulkJobIdRef.current.slice(0, 8)}` : ""}`}
                     </CardDescription>
+                    
+                    {/* Live ETA & Timer Badges */}
+                    {(sending || hasRun) && (
+                      <div className="flex items-center gap-2 mt-2.5 flex-wrap text-xs">
+                        {sending ? (
+                          <>
+                            <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20 font-mono flex items-center gap-1.5 py-1 px-2.5">
+                              <Clock className="h-3.5 w-3.5 animate-spin" />
+                              <span>Elapsed: <strong>{etaInfo.elapsedText}</strong></span>
+                            </Badge>
+                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 font-mono flex items-center gap-1.5 py-1 px-2.5">
+                              <Timer className="h-3.5 w-3.5" />
+                              <span>ETA: <strong>{etaInfo.etaText}</strong></span>
+                            </Badge>
+                            <Badge variant="outline" className="bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20 font-mono flex items-center gap-1.5 py-1 px-2.5">
+                              <Zap className="h-3.5 w-3.5" />
+                              <span>Speed: <strong>{etaInfo.speedText}</strong></span>
+                            </Badge>
+                          </>
+                        ) : (
+                          <>
+                            <Badge variant="outline" className="bg-green-500/10 text-green-600 dark:text-green-400 border-green-500/20 font-mono flex items-center gap-1.5 py-1 px-2.5">
+                              <Clock className="h-3.5 w-3.5" />
+                              <span>Total Duration: <strong>{etaInfo.elapsedText}</strong></span>
+                            </Badge>
+                            {etaInfo.speedText && (
+                              <Badge variant="outline" className="bg-muted text-muted-foreground font-mono flex items-center gap-1.5 py-1 px-2.5">
+                                <Zap className="h-3.5 w-3.5 text-amber-500" />
+                                <span>Avg Speed: <strong>{etaInfo.speedText}</strong></span>
+                              </Badge>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {sending && (
                       <Button variant="destructive" size="sm" onClick={stopSending}>
                         <Square className="mr-1 h-3.5 w-3.5" />
                         Stop Campaign
+                      </Button>
+                    )}
+                    {!sending && hasRun && unsentRows.length > 0 && (
+                      <>
+                        <Button
+                          size="sm"
+                          className="bg-green-600 hover:bg-green-700 text-white font-medium"
+                          onClick={() => sendBulk(true, true)}
+                        >
+                          <Play className="mr-1 h-3.5 w-3.5" />
+                          Resume Remaining ({unsentRows.length})
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={exportUnsentCsv}>
+                          <Download className="mr-1 h-3.5 w-3.5" />
+                          Export Unsent ({unsentRows.length})
+                        </Button>
+                      </>
+                    )}
+                    {!sending && hasRun && bulkJobIdRef.current && (
+                      <Button asChild variant="outline" size="sm">
+                        <Link href={`/sent/campaign/${bulkJobIdRef.current}`}>
+                          <BarChart2 className="mr-1.5 h-3.5 w-3.5 text-primary" />
+                          View Analytics
+                        </Link>
                       </Button>
                     )}
                   </div>
@@ -629,55 +1148,79 @@ export default function BulkPage() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {/* Stats Grid */}
-                <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-                  <div className="rounded-lg border bg-muted/40 p-4">
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+                  <div className="rounded-lg border bg-muted/40 p-3">
                     <div className="text-xs font-semibold text-muted-foreground uppercase">Successful</div>
                     <div className="mt-1 flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-foreground">{stats.sent}</span>
+                      <span className="text-2xl font-extrabold text-foreground">{stats.sent}</span>
                       <span className="text-xs text-muted-foreground">emails</span>
                     </div>
                   </div>
 
-                  <div className={`rounded-lg border p-4 ${stats.failed > 0 ? "border-destructive/20 bg-destructive/5" : "bg-muted/40"}`}>
+                  <div className="rounded-lg border bg-yellow-500/5 border-yellow-500/20 p-3">
+                    <div className="text-xs font-semibold text-yellow-600 dark:text-yellow-400 uppercase">Skipped / Sent</div>
+                    <div className="mt-1 flex items-baseline gap-2">
+                      <span className="text-2xl font-extrabold text-yellow-600 dark:text-yellow-400">{stats.skipped}</span>
+                      <span className="text-xs text-muted-foreground">duplicate</span>
+                    </div>
+                  </div>
+
+                  <div className={`rounded-lg border p-3 ${stats.failed > 0 ? "border-destructive/20 bg-destructive/5" : "bg-muted/40"}`}>
                     <div className="text-xs font-semibold text-muted-foreground uppercase">Failed</div>
                     <div className="mt-1 flex items-baseline gap-2">
-                      <span className={`text-3xl font-extrabold ${stats.failed > 0 ? "text-destructive" : "text-foreground"}`}>{stats.failed}</span>
+                      <span className={`text-2xl font-extrabold ${stats.failed > 0 ? "text-destructive" : "text-foreground"}`}>{stats.failed}</span>
                       <span className="text-xs text-muted-foreground">emails</span>
                     </div>
                   </div>
 
-                  <div className="rounded-lg border bg-muted/40 p-4">
-                    <div className="text-xs font-semibold text-muted-foreground uppercase">Certificates</div>
-                    <div className="mt-1 flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-foreground">{stats.certs}</span>
-                      <span className="text-xs text-muted-foreground">attached</span>
+                  {attachCertificate && (
+                    <div className="rounded-lg border bg-muted/40 p-3">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase">Certificates</div>
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <span className="text-2xl font-extrabold text-foreground">{stats.certs}</span>
+                        <span className="text-xs text-muted-foreground">attached</span>
+                      </div>
                     </div>
-                  </div>
+                  )}
 
-                  <div className="rounded-lg border bg-muted/40 p-4">
-                    <div className="text-xs font-semibold text-muted-foreground uppercase">Completion Rate</div>
+                  {attachLetters && (
+                    <div className="rounded-lg border bg-muted/40 p-3">
+                      <div className="text-xs font-semibold text-muted-foreground uppercase">Letters</div>
+                      <div className="mt-1 flex items-baseline gap-2">
+                        <span className="text-2xl font-extrabold text-foreground">{stats.letters}</span>
+                        <span className="text-xs text-muted-foreground">attached</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="rounded-lg border bg-muted/40 p-3 col-span-2 sm:col-span-1">
+                    <div className="text-xs font-semibold text-muted-foreground uppercase">Processed</div>
                     <div className="mt-1 flex items-baseline gap-2">
-                      <span className="text-3xl font-extrabold text-foreground">
+                      <span className="text-2xl font-extrabold text-foreground">
                         {validRecipients > 0
-                          ? `${Math.round(((stats.sent + stats.failed) / validRecipients) * 100)}%`
+                          ? `${Math.min(100, Math.round(((stats.sent + stats.failed + stats.skipped) / validRecipients) * 100))}%`
                           : "0%"}
                       </span>
                       <span className="text-xs text-muted-foreground">
-                        ({stats.sent + stats.failed} / {validRecipients})
+                        ({stats.sent + stats.failed + stats.skipped}/{validRecipients})
                       </span>
                     </div>
                   </div>
                 </div>
 
-                {/* Progress Bar */}
-                <div className="space-y-1">
+                {/* Progress Bar & ETA subtitle */}
+                <div className="space-y-1.5">
                   <div className="h-2 w-full overflow-hidden rounded-full bg-accent">
                     <div
                       className="h-full bg-primary transition-all duration-300 ease-out"
                       style={{
-                        width: `${validRecipients > 0 ? ((stats.sent + stats.failed) / validRecipients) * 100 : 0}%`,
+                        width: `${validRecipients > 0 ? Math.min(100, ((stats.sent + stats.failed + stats.skipped) / validRecipients) * 100) : 0}%`,
                       }}
                     />
+                  </div>
+                  <div className="flex justify-between items-center text-[11px] text-muted-foreground font-mono">
+                    <span>{etaInfo.remaining > 0 ? `${etaInfo.remaining} recipients remaining` : "All recipients processed"}</span>
+                    {sending && <span>Estimated remaining: <strong className="text-foreground">{etaInfo.etaText}</strong></span>}
                   </div>
                 </div>
               </CardContent>
@@ -761,7 +1304,7 @@ export default function BulkPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Send Controls</CardTitle>
-                  <CardDescription>Configure delay and trigger the bulk run.</CardDescription>
+                  <CardDescription>Configure batching, anti-duplicate protection, and dispatch.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {selectedCertificate && (
@@ -774,20 +1317,68 @@ export default function BulkPage() {
                     </div>
                   )}
 
-                  <div className="space-y-1.5">
-                    <Label htmlFor="delay">Delay between emails (ms)</Label>
-                    <Input
-                      id="delay"
-                      type="number"
-                      min={0}
-                      value={delayMs}
+                  {/* Batch size and Delay settings */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="batchSize">Batch size</Label>
+                      <Input
+                        id="batchSize"
+                        type="number"
+                        min={5}
+                        max={100}
+                        value={batchSize}
+                        disabled={sending}
+                        onChange={(event) => setBatchSize(Number(event.target.value))}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Emails per request (prevents 300s timeout).</p>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label htmlFor="delay">Delay (ms)</Label>
+                      <Input
+                        id="delay"
+                        type="number"
+                        min={0}
+                        value={delayMs}
+                        disabled={sending}
+                        onChange={(event) => setDelayMs(Number(event.target.value))}
+                      />
+                      <p className="text-[10px] text-muted-foreground">Delay between emails.</p>
+                    </div>
+                  </div>
+
+                  {/* Anti Duplicate Toggle */}
+                  <div className="flex items-center justify-between rounded-md border bg-muted/20 p-2.5 text-xs">
+                    <div className="space-y-0.5 pr-2">
+                      <Label htmlFor="antiDuplicate" className="font-semibold flex items-center gap-1.5 cursor-pointer">
+                        <ShieldCheck className="h-3.5 w-3.5 text-green-500" />
+                        Skip Already Sent
+                      </Label>
+                      <p className="text-[10px] text-muted-foreground">
+                        Never re-sends emails to applicants who already received this template.
+                      </p>
+                    </div>
+                    <input
+                      id="antiDuplicate"
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 accent-primary cursor-pointer"
+                      checked={skipAlreadySent}
                       disabled={sending}
-                      onChange={(event) => setDelayMs(Number(event.target.value))}
+                      onChange={(e) => setSkipAlreadySent(e.target.checked)}
                     />
-                    <p className="text-[10px] text-muted-foreground">Adding a delay helps avoid hitting rate limits or spam filters.</p>
                   </div>
 
                   <div className="flex flex-col gap-2">
+                    {hasRun && unsentRows.length > 0 && !sending && (
+                      <Button
+                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium"
+                        onClick={() => sendBulk(true, true)}
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        Resume Remaining ({unsentRows.length} unsent)
+                      </Button>
+                    )}
+
                     <Button className="w-full" disabled={!canSend || sending || validationLoading} onClick={runPreSendValidation}>
                       {validationLoading ? (
                         <>
@@ -801,19 +1392,27 @@ export default function BulkPage() {
                         </>
                       )}
                     </Button>
-                    <Button variant="outline" className="w-full border-primary/30 hover:bg-primary/5 text-primary" disabled={!canSend || sending} onClick={() => sendBulk(true)}>
+
+                    <Button variant="outline" className="w-full border-primary/30 hover:bg-primary/5 text-primary" disabled={!canSend || sending} onClick={() => sendBulk(true, false)}>
                       {sending ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending...
+                          Sending Campaign in Batches...
                         </>
                       ) : (
                         <>
                           <Play className="mr-2 h-4 w-4" />
-                          Send Direct (Skip Check)
+                          Send Direct (Skip Pre-Check)
                         </>
                       )}
                     </Button>
+
+                    {hasRun && unsentRows.length > 0 && (
+                      <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={exportUnsentCsv}>
+                        <Download className="mr-1.5 h-3.5 w-3.5" />
+                        Export Unsent CSV ({unsentRows.length})
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>
@@ -823,7 +1422,7 @@ export default function BulkPage() {
                 <CardHeader className="pb-3 flex flex-row items-center justify-between">
                   <div>
                     <CardTitle className="text-sm font-semibold">Live Dispatch Logs</CardTitle>
-                    <CardDescription className="text-[11px]">Real-time events</CardDescription>
+                    <CardDescription className="text-[11px]">Real-time batch events</CardDescription>
                   </div>
                   {!logsCleared && logs.length > 0 && (
                     <Button variant="ghost" size="sm" className="h-7 text-[10px] px-2" onClick={() => setLogsCleared(true)}>
@@ -841,8 +1440,9 @@ export default function BulkPage() {
                       logs.map((log, index) => {
                         const isFailed = log.type === "failed" || log.type === "certificate_error" || log.type === "qr_error";
                         const isBothFailed = log.type === "failed" && log.bothFailed;
+                        const isSkipped = log.type === "skipped";
                         return (
-                          <div key={index} className={`py-2 first:pt-0 last:pb-0 space-y-1 ${isBothFailed ? "bg-red-500/10 border border-red-500/20 px-2 rounded-md my-1" : ""}`}>
+                          <div key={index} className={`py-2 first:pt-0 last:pb-0 space-y-1 ${isBothFailed ? "bg-red-500/10 border border-red-500/20 px-2 rounded-md my-1" : isSkipped ? "bg-yellow-500/5 px-2 rounded-md my-0.5" : ""}`}>
                             <div className="flex items-center justify-between gap-2">
                               <span className="truncate text-zinc-300 font-semibold">{log.email || log.recipient || "System Log"}</span>
                               <span className={`px-1.5 py-0.5 rounded text-[9px] uppercase font-bold tracking-wider ${
@@ -850,11 +1450,13 @@ export default function BulkPage() {
                                   ? "bg-red-600/35 text-red-100 border border-red-500/50"
                                   : isFailed 
                                     ? "bg-red-500/10 text-red-400 border border-red-500/20" 
-                                    : log.type === "sent" 
-                                      ? "bg-green-500/10 text-green-400 border border-green-500/20" 
-                                      : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                    : isSkipped
+                                      ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
+                                      : log.type === "sent" 
+                                        ? "bg-green-500/10 text-green-400 border border-green-500/20" 
+                                        : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
                               }`}>
-                                {isBothFailed ? "❌❌ Both Failed" : log.type}
+                                {isBothFailed ? "❌❌ Both Failed" : isSkipped ? "⏭️ Skipped (Sent)" : log.type}
                               </span>
                             </div>
                             {isBothFailed ? (
@@ -862,12 +1464,16 @@ export default function BulkPage() {
                                 <div><span className="font-semibold text-red-400">Primary:</span> {log.primaryError}</div>
                                 <div><span className="font-semibold text-orange-400">Fallback:</span> {log.fallbackError}</div>
                               </div>
+                            ) : log.reason ? (
+                              <div className="text-yellow-400/90 whitespace-pre-wrap pl-1 border-l-2 border-yellow-500/50 mt-1 leading-normal font-sans">
+                                Note: {log.reason}
+                              </div>
                             ) : log.error ? (
                               <div className="text-red-400 whitespace-pre-wrap pl-1 border-l-2 border-red-500/50 mt-1 leading-normal font-sans">
                                 Reason: {log.error}
                               </div>
                             ) : null}
-                            {log.total && <div className="text-zinc-500">Initiated total recipients: {log.total}</div>}
+                            {log.total && <div className="text-zinc-500">Initiated batch: {log.total} recipients</div>}
                           </div>
                         );
                       })
@@ -946,6 +1552,27 @@ export default function BulkPage() {
         <DialogContent className="max-w-4xl">
           <DialogHeader><DialogTitle>Certificate Preview</DialogTitle></DialogHeader>
           {certPreviewPdf && <iframe title="Certificate preview" className="h-[720px] w-full rounded-md border" src={`data:application/pdf;base64,${certPreviewPdf}`} />}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={letterPreviewOpen} onOpenChange={setLetterPreviewOpen}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-primary" />
+              Personalized Letter Preview (Localhost Generated)
+            </DialogTitle>
+          </DialogHeader>
+          {letterPreviewPdf && (
+            <iframe
+              title="Personalized letter preview"
+              className="h-[720px] w-full rounded-md border shadow-inner"
+              src={`data:application/pdf;base64,${letterPreviewPdf}`}
+            />
+          )}
+          <DialogFooter>
+            <Button onClick={() => setLetterPreviewOpen(false)}>Close Preview</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
