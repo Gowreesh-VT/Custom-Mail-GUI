@@ -8,19 +8,26 @@ import { jsonError } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-// Perform MX check on domain
+// Perform MX check on domain with timeout protection
 async function checkDomainMx(domain: string): Promise<boolean> {
+  const withTimeout = <T>(promise: Promise<T>, ms = 3000): Promise<T> => {
+    return Promise.race([
+      promise,
+      new Promise<T>((_, reject) => setTimeout(() => reject(new Error("DNS timeout")), ms))
+    ]);
+  };
+
   try {
-    const records = await dns.promises.resolveMx(domain);
-    return records && records.length > 0;
+    const records = await withTimeout(dns.promises.resolveMx(domain));
+    return Boolean(records && records.length > 0);
   } catch {
     try {
-      const records = await dns.promises.resolve(domain, "MX");
-      return records && records.length > 0;
+      const records = await withTimeout(dns.promises.resolve(domain, "MX"));
+      return Boolean(records && records.length > 0);
     } catch {
       try {
-        const addresses = await dns.promises.resolve4(domain);
-        return addresses && addresses.length > 0;
+        const addresses = await withTimeout(dns.promises.resolve4(domain));
+        return Boolean(addresses && addresses.length > 0);
       } catch {
         return false;
       }
