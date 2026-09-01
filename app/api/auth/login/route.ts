@@ -21,13 +21,13 @@ export async function POST(req: NextRequest) {
       return jsonError("Too many login attempts. Your account has been temporarily locked. Please contact the administrator at vt.gowreesh43@gmail.com.", 429, "RATE_LIMITED");
     }
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !(await bcrypt.compare(body.password, user.passwordHash))) {
+    if (!user || user.isActive === false) {
       await logAudit("user.login_failed", undefined, { email: body.email }, undefined, req);
       return jsonError("Invalid email or password", 401, "INVALID_CREDENTIALS");
     }
-    if (user.isActive === false) {
-      await logAudit("user.login_failed", user.id, { reason: "deactivated" }, user.id, req);
-      return jsonError("Your account has been deactivated. Contact your administrator.", 403, "ACCOUNT_DEACTIVATED");
+    if (!(await bcrypt.compare(body.password, user.passwordHash))) {
+      await logAudit("user.login_failed", undefined, { email: body.email }, undefined, req);
+      return jsonError("Invalid email or password", 401, "INVALID_CREDENTIALS");
     }
     const role: "admin" | "user" = user.role === "admin" ? "admin" : "user";
     const payload = { userId: user.id, email: user.email, role, forcePasswordReset: Boolean(user.forcePasswordReset) };

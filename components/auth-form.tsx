@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -13,7 +12,6 @@ import { Eye, EyeOff } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 export function AuthForm({ mode }: { mode: "login" | "signup" }) {
-  const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   async function submit(formData: FormData) {
@@ -24,7 +22,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       toast.success(mode === "login" ? "Welcome back" : "Account created");
-      router.push(data.user?.forcePasswordReset ? "/settings" : "/compose");
+      window.location.href = data.user?.forcePasswordReset ? "/settings" : "/compose";
     } catch (error: any) {
       toast.error(error.message);
     } finally {
@@ -35,7 +33,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     <Card className="w-full max-w-md">
       <CardHeader>
         <div className="flex justify-center">
-          <Image src="/main-logo.svg" alt="Custom Mail" width={72} height={72} className="h-18 w-18" />
+          <Image src="/main-logo.svg" alt="Custom Mail" width={72} height={72} className="h-16 w-16" />
         </div>
         <CardTitle>{mode === "login" ? "Log in" : "Create account"}</CardTitle>
         <CardDescription>{mode === "login" ? "Access your SMTP email client." : "Start with your own isolated workspace."}</CardDescription>

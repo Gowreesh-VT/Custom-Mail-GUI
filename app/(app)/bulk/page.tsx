@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
-import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowRight, Download, RotateCcw, ShieldCheck, BarChart2, Clock, Timer, Zap, FileText, FolderOpen, Laptop, Sparkles } from "lucide-react";
+import * as XLSX from "xlsx";
+import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowRight, Download, RotateCcw, ShieldCheck, BarChart2, Clock, Timer, Zap, FileText, FolderOpen, Laptop, Sparkles, FlaskConical, ClipboardList } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 import { replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
 
@@ -98,6 +100,15 @@ export default function BulkPage() {
   const [checkSentGlobally, setCheckSentGlobally] = useState(false);
   const [checkSentHistory, setCheckSentHistory] = useState(true);
 
+  // Feature: Test Mail Send
+  const [testMailOpen, setTestMailOpen] = useState(false);
+  const [testMailAddresses, setTestMailAddresses] = useState("");
+  const [testMailSending, setTestMailSending] = useState(false);
+
+  // Feature: Paste Emails Mode
+  const [inputMode, setInputMode] = useState<"csv" | "paste">("csv");
+  const [pastedEmails, setPastedEmails] = useState("");
+
   useEffect(() => {
     if (typeof window !== "undefined") {
       const isLocal =
@@ -156,31 +167,97 @@ export default function BulkPage() {
     }).catch((error) => toast.error(error.message));
   }, [templateId, columns]);
 
+  /** Normalise a flat list of raw objects into rows with a resolved `email` key */
+  function normaliseRows(rawRows: Record<string, unknown>[]): { fields: string[]; cleanRows: Record<string, string>[]; emailKey: string | undefined } {
+    if (rawRows.length === 0) return { fields: [], cleanRows: [], emailKey: undefined };
+    
+    // Gather all unique keys across all rows (handles JSON with optional fields & sparse Excel sheets)
+    const allKeysSet = new Set<string>();
+    for (const r of rawRows) {
+      if (r && typeof r === "object") {
+        for (const k of Object.keys(r)) {
+          allKeysSet.add(k);
+        }
+      }
+    }
+    const fields = Array.from(allKeysSet);
+
+    const emailKey = fields.find((f) => {
+      const clean = f.toLowerCase().trim();
+      return clean === "email" || clean === "e-mail" || clean === "email address" || clean === "recipient" || clean === "to";
+    });
+
+    const cleanRows = rawRows
+      .filter((row) => row && typeof row === "object")
+      .map((row) => {
+        const cleaned: Record<string, string> = {};
+        for (const [k, v] of Object.entries(row)) {
+          cleaned[String(k)] = String(v ?? "").trim();
+        }
+        if (emailKey && cleaned[emailKey]) {
+          cleaned.email = cleaned[emailKey];
+        }
+        return cleaned;
+      })
+      .filter((row) => Boolean(emailKey && row[emailKey]?.trim()));
+
+    return { fields, cleanRows, emailKey };
+  }
+
   async function inspect(nextFile: File | null) {
     setParsingCsv(true);
     setFile(nextFile);
     try {
       if (!nextFile) return;
-      const parsed = Papa.parse<Record<string, string>>(await nextFile.text(), { header: true, skipEmptyLines: true });
-      const fields = parsed.meta.fields || [];
-      const emailKey = fields.find((f) => {
-        const clean = f.toLowerCase().trim();
-        return clean === "email" || clean === "e-mail" || clean === "email address" || clean === "recipient" || clean === "to";
-      });
+      const ext = nextFile.name.split(".").pop()?.toLowerCase() ?? "";
+      let rawRows: Record<string, unknown>[] = [];
+
+      if (ext === "csv") {
+        // ── CSV via PapaParse ──────────────────────────────────────────────
+        const parsed = Papa.parse<Record<string, string>>(await nextFile.text(), { header: true, skipEmptyLines: true });
+        rawRows = parsed.data as Record<string, unknown>[];
+
+      } else if (ext === "xlsx" || ext === "xls") {
+        // ── Excel via xlsx (SheetJS) ───────────────────────────────────────
+        const arrayBuffer = await nextFile.arrayBuffer();
+        const workbook = XLSX.read(arrayBuffer, { type: "array" });
+        const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+        rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, { defval: "" });
+
+      } else if (ext === "json") {
+        // ── JSON ───────────────────────────────────────────────────────────
+        const text = await nextFile.text();
+        const parsed = JSON.parse(text);
+        // Accept either a top-level array or an object with an array value
+        if (Array.isArray(parsed)) {
+          rawRows = parsed;
+        } else if (typeof parsed === "object" && parsed !== null) {
+          const arrayVal = Object.values(parsed).find(Array.isArray);
+          if (arrayVal) {
+            rawRows = arrayVal as Record<string, unknown>[];
+          } else {
+            return toast.error("JSON must contain an array of records (or an object whose value is an array)");
+          }
+        } else {
+          return toast.error("JSON file must contain an array of objects");
+        }
+
+      } else {
+        return toast.error("Unsupported file type. Please use CSV, Excel (.xlsx/.xls), or JSON.");
+      }
+
+      const { fields, cleanRows, emailKey } = normaliseRows(rawRows);
+
       if (!emailKey) {
         setRows([]);
         setColumns(fields);
-        return toast.error('CSV must include an "email" or "Email" column');
+        return toast.error('File must include an "email", "Email", "recipient", or "to" column');
       }
       setColumns(fields);
-      const cleanRows = parsed.data
-        .filter((row) => row[emailKey] && String(row[emailKey]).trim())
-        .map((row) => ({
-          ...row,
-          email: String(row[emailKey]).trim()
-        }));
       setRows(cleanRows);
       setStep(2);
+    } catch (err: any) {
+      toast.error(err.message || "Failed to parse file");
     } finally {
       setParsingCsv(false);
     }
@@ -208,8 +285,11 @@ export default function BulkPage() {
     })), [qrConfig, qrFields]);
   const hasQrPlaceholders = qrFields.length > 0;
   const hasMissingQrConfig = hasQrPlaceholders && qrFieldConfigs.length === 0;
-  const canSend = file && fullTemplate && rows.length > 0 && Object.values(columnMap).every(Boolean);
+  // canSend: works for both CSV/Excel/JSON (file present) and paste mode (file is null)
+  const canSend = fullTemplate && rows.length > 0 && (Object.values(columnMap).every(Boolean) || Object.keys(columnMap).length === 0);
   const validRecipients = rows.length;
+  // Memoised so we don't recompute parsePastedEmails on every keystroke outside paste mode
+  const parsedPastedCount = useMemo(() => parsePastedEmails(pastedEmails).length, [pastedEmails]); // eslint-disable-line react-hooks/exhaustive-deps
   const favouriteTemplates = templates.filter((template) => template.isFavourite);
   const otherTemplates = templates.filter((template) => !template.isFavourite);
   const selectedCertificate = certificateTemplates.find((template) => template.id === certificateTemplateId);
@@ -271,7 +351,7 @@ export default function BulkPage() {
   }
 
   async function runPreSendValidation() {
-    if (!canSend || !file || !fullTemplate) return toast.error("Complete all steps first");
+    if (!canSend || !fullTemplate) return toast.error("Complete all steps first");
     setValidationLoading(true);
     try {
       const requiredCols = ["email", ...Object.values(columnMap)];
@@ -559,6 +639,69 @@ export default function BulkPage() {
     toast.success(`Exported ${unsentRows.length} unsent recipients`);
   }
 
+  // ── Feature: Test Mail Send ────────────────────────────────────────────────
+  async function sendTestMail() {
+    if (!fullTemplate) return toast.error("Select a template first");
+    const rawAddresses = testMailAddresses.split(/[,;\n]+/).map((s) => s.trim()).filter(Boolean);
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const validAddresses = rawAddresses.filter((e) => emailRe.test(e));
+    if (validAddresses.length === 0) return toast.error("Enter at least one valid email address");
+
+    setTestMailSending(true);
+    try {
+      // Use first CSV row (or empty) for merge-field substitution
+      const mergeValues = mappedSample;
+      const substitutedSubject = replaceTemplateValues(
+        fullTemplate.subjectLine || fullTemplate.subject || "(No subject)",
+        mergeValues
+      );
+      const substitutedBody = replaceTemplateValues(fullTemplate.bodyHtml || "", mergeValues);
+
+      const res = await apiFetch<{ success: boolean; messageId?: string }>("/api/send", {
+        method: "POST",
+        body: JSON.stringify({
+          to: validAddresses,
+          subject: `[TEST] ${substitutedSubject}`,
+          bodyHtml: substitutedBody,
+          qrConfig: qrConfig,
+          trackingEnabled: false,
+        }),
+      });
+
+      if (res.success) {
+        toast.success(`Test email sent to ${validAddresses.join(", ")}`);
+        setTestMailOpen(false);
+        setTestMailAddresses("");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Failed to send test email");
+    } finally {
+      setTestMailSending(false);
+    }
+  }
+
+  // ── Feature: Paste Emails Mode ────────────────────────────────────────────
+  function parsePastedEmails(raw: string): string[] {
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const seen = new Set<string>();
+    return raw
+      .split(/[,;\n\r]+/)
+      .map((s) => s.trim().toLowerCase())
+      .filter((e) => e && emailRe.test(e) && !seen.has(e) && seen.add(e) !== undefined);
+  }
+
+  function usePastedEmails() {
+    const parsed = parsePastedEmails(pastedEmails);
+    if (parsed.length === 0) return toast.error("No valid email addresses found");
+    const nextRows = parsed.map((email) => ({ email }));
+    setRows(nextRows);
+    setColumns(["email"]);
+    setColumnMap({});
+    setFile(null);
+    setStep(2);
+    toast.success(`Loaded ${parsed.length} email${parsed.length === 1 ? "" : "s"}`);
+  }
+
   async function previewCertificate() {
     if (!selectedCertificate) return;
     const row = rows[certPreviewRow] || {};
@@ -735,7 +878,7 @@ export default function BulkPage() {
         <p className="text-sm text-muted-foreground">CSV to saved HTML template mail merge, with editable field mapping and streaming progress.</p>
       </div>
       <div className="grid gap-3 md:grid-cols-4">
-        {["Upload CSV", "Select Template", "Map Fields", "Preview & Send"].map((label, index) => (
+        {["Upload File", "Select Template", "Map Fields", "Preview & Send"].map((label, index) => (
           <Card key={label} className={step === index + 1 ? "border-ring" : ""}>
             <CardContent className="flex items-center gap-2 p-3 text-sm">
               {step > index + 1 ? <Check className="h-4 w-4 text-sent" /> : <Badge variant={step === index + 1 ? "default" : "secondary"}>{index + 1}</Badge>}
@@ -747,14 +890,112 @@ export default function BulkPage() {
 
       {step === 1 && (
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><FileSpreadsheet className="h-5 w-5" />Upload CSV</CardTitle><CardDescription>Requires an email column. Matching CSV columns will auto-map to template fields.</CardDescription></CardHeader>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <FileSpreadsheet className="h-5 w-5" />
+              Add Recipients
+            </CardTitle>
+            <CardDescription>Upload a CSV, Excel, or JSON file — or paste addresses directly.</CardDescription>
+          </CardHeader>
           <CardContent className="space-y-4">
-            <Label htmlFor="csv" className="flex min-h-44 cursor-pointer flex-col items-center justify-center gap-3 rounded-md border border-dashed bg-accent/20 p-6 text-center"><Upload className="h-6 w-6" />{file?.name || "Choose CSV file"}</Label>
-            <Input id="csv" className="hidden" type="file" accept=".csv" onChange={(event) => inspect(event.target.files?.[0] || null)} />
-            {parsingCsv && (
-              <div className="flex flex-col items-center gap-3 py-6">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Parsing CSV...</p>
+            {/* Mode Tabs */}
+            <div className="flex items-center gap-1 rounded-lg border bg-muted/30 p-1 w-fit">
+              <button
+                type="button"
+                onClick={() => setInputMode("csv")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  inputMode === "csv"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <FileSpreadsheet className="h-3.5 w-3.5" />
+                Upload File
+              </button>
+              <button
+                type="button"
+                onClick={() => setInputMode("paste")}
+                className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                  inputMode === "paste"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                <ClipboardList className="h-3.5 w-3.5" />
+                Paste Emails
+              </button>
+            </div>
+
+            {/* File Upload Mode (CSV / Excel / JSON) */}
+            {inputMode === "csv" && (
+              <>
+                <Label
+                  htmlFor="datafile"
+                  className="flex min-h-44 cursor-pointer flex-col items-center justify-center gap-3 rounded-md border border-dashed bg-accent/20 p-6 text-center hover:bg-accent/30 transition-colors"
+                >
+                  <Upload className="h-6 w-6 text-muted-foreground" />
+                  <div className="space-y-1">
+                    <p className="text-sm font-medium">{file?.name || "Click to choose a file"}</p>
+                    <p className="text-xs text-muted-foreground">or drag and drop</p>
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-center">
+                    <span className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <FileSpreadsheet className="h-2.5 w-2.5" /> CSV
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <FileSpreadsheet className="h-2.5 w-2.5" /> XLSX
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <FileSpreadsheet className="h-2.5 w-2.5" /> XLS
+                    </span>
+                    <span className="inline-flex items-center gap-1 rounded-full border bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                      <FileText className="h-2.5 w-2.5" /> JSON
+                    </span>
+                  </div>
+                </Label>
+                <Input
+                  id="datafile"
+                  className="hidden"
+                  type="file"
+                  accept=".csv,.xlsx,.xls,.json"
+                  onChange={(event) => inspect(event.target.files?.[0] || null)}
+                />
+                {parsingCsv && (
+                  <div className="flex flex-col items-center gap-3 py-6">
+                    <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                    <p className="text-sm text-muted-foreground">Parsing file...</p>
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Paste Emails Mode */}
+            {inputMode === "paste" && (
+              <div className="space-y-3">
+                <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-xs text-muted-foreground">
+                  <span className="font-semibold text-foreground">Best for templates with no merge fields.</span> One email per line, or separated by commas / semicolons. Duplicates are removed automatically.
+                </div>
+                <Textarea
+                  placeholder={"alice@example.com\nbob@example.com\ncarol@example.com"}
+                  value={pastedEmails}
+                  onChange={(e) => setPastedEmails(e.target.value)}
+                  className="min-h-[180px] font-mono text-xs resize-y"
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs text-muted-foreground">
+                    {parsedPastedCount > 0
+                      ? `${parsedPastedCount} valid, unique address${parsedPastedCount === 1 ? "" : "es"} detected`
+                      : "No valid addresses yet"}
+                  </span>
+                  <Button
+                    size="sm"
+                    disabled={parsedPastedCount === 0}
+                    onClick={usePastedEmails}
+                  >
+                    Use These Emails
+                    <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>
@@ -807,8 +1048,14 @@ export default function BulkPage() {
 
       {step === 3 && fullTemplate && (
         <Card>
-          <CardHeader><CardTitle>Map CSV Columns</CardTitle><CardDescription>Exact column matches were selected automatically. Review and adjust before sending.</CardDescription></CardHeader>
+          <CardHeader><CardTitle>Map Columns &amp; Merge Fields</CardTitle><CardDescription>Exact column matches were selected automatically. Review and adjust before sending.</CardDescription></CardHeader>
           <CardContent className="space-y-4">
+            {columns.length <= 1 && textFields.length > 0 && (
+              <div className="rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-xs text-amber-600 dark:text-amber-400 space-y-1">
+                <div className="font-semibold flex items-center gap-1.5"><AlertTriangle className="h-3.5 w-3.5" /> Template Contains Merge Placeholders</div>
+                <div>This template uses {textFields.map((f: string) => `{{${f}}}`).join(", ")}. Because you pasted plain email addresses without other columns, merge fields will default to empty unless mapped.</div>
+              </div>
+            )}
             {qrFields.length > 0 && <div className="rounded-md border bg-accent/20 p-3 text-sm"><div className="font-medium">This template contains QR placeholders</div><div className="text-muted-foreground">{qrFields.map((field: string) => `{{${field}}}`).join(", ")}</div></div>}
             <h3 className="font-medium">Text Merge Fields</h3>
             {textFields.map((field: string) => (
@@ -1407,6 +1654,25 @@ export default function BulkPage() {
                       )}
                     </Button>
 
+                    {/* Test Mail Send */}
+                    <div className="relative my-1">
+                      <div className="absolute inset-0 flex items-center">
+                        <span className="w-full border-t border-border" />
+                      </div>
+                      <div className="relative flex justify-center">
+                        <span className="bg-card px-2 text-[10px] text-muted-foreground uppercase tracking-wider">or</span>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      className="w-full text-xs border-dashed"
+                      disabled={!fullTemplate || sending}
+                      onClick={() => setTestMailOpen(true)}
+                    >
+                      <FlaskConical className="mr-2 h-3.5 w-3.5 text-primary" />
+                      Send Test Email
+                    </Button>
+
                     {hasRun && unsentRows.length > 0 && (
                       <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={exportUnsentCsv}>
                         <Download className="mr-1.5 h-3.5 w-3.5" />
@@ -1489,8 +1755,8 @@ export default function BulkPage() {
       <Card>
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3">
           <div>
-            <CardTitle>CSV Preview</CardTitle>
-            <CardDescription>Preview of parsed data. Highlighted rows represent duplicate emails.</CardDescription>
+            <CardTitle>Recipients Preview</CardTitle>
+            <CardDescription>Preview of parsed data ({file?.name ?? "pasted emails"}). Highlighted rows represent duplicate emails.</CardDescription>
           </div>
           {duplicateEmailsSet.size > 0 && (
             <div className="flex items-center gap-2">
@@ -1780,6 +2046,60 @@ export default function BulkPage() {
             >
               Proceed with Valid Only
               <ArrowRight className="ml-1 h-4 w-4" />
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Test Mail Send Dialog */}
+      <Dialog open={testMailOpen} onOpenChange={setTestMailOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FlaskConical className="h-5 w-5 text-primary" />
+              Send Test Email
+            </DialogTitle>
+            <DialogDescription>
+              Send the current template (with first-row merge values) to specific addresses before running the full campaign.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-3 py-1">
+            <Label className="text-sm font-medium" htmlFor="testMailAddresses">
+              Recipient addresses
+            </Label>
+            <Textarea
+              id="testMailAddresses"
+              placeholder={"you@example.com\ncolleague@example.com"}
+              value={testMailAddresses}
+              onChange={(e) => setTestMailAddresses(e.target.value)}
+              className="min-h-[100px] font-mono text-xs resize-y"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              One per line, or comma / semicolon separated. The subject will be prefixed with <span className="font-mono bg-muted px-1 rounded">[TEST]</span>. Merge fields use the first CSV row&apos;s values.
+            </p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setTestMailOpen(false); setTestMailAddresses(""); }}>
+              Cancel
+            </Button>
+            <Button
+              disabled={testMailSending || !testMailAddresses.trim()}
+              onClick={sendTestMail}
+              className="bg-primary text-primary-foreground"
+            >
+              {testMailSending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                <>
+                  <FlaskConical className="mr-2 h-4 w-4" />
+                  Send Test
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
