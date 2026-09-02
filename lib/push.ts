@@ -70,9 +70,12 @@ export async function sendPushToUser(
     } catch (error: any) {
       console.error("Failed to send push notification to subscription:", sub.id, error)
       
-      // Subscription expired or invalid
+      // Subscription expired, invalidated, or VAPID credentials mismatched
       // 410 Gone = subscription no longer valid
-      if (error && (error.statusCode === 410 || error.statusCode === 404)) {
+      // 404 Not Found = subscription endpoint does not exist
+      // 403 Forbidden = VAPID credentials mismatch / authorization failed
+      // 400 Bad Request = invalid registration endpoint / payload
+      if (error && (error.statusCode === 410 || error.statusCode === 404 || error.statusCode === 403 || error.statusCode === 400)) {
         await prisma.pushSubscription.update({
           where: { id: sub.id },
           data: { isActive: false }

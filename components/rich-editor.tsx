@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
-import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
 import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle } from "@tiptap/extension-text-style";
@@ -54,7 +52,18 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
   const [, setToolbarRenderTick] = useState(0);
 
   const editor = useEditor({
-    extensions: [StarterKit, Underline, Link, Image, TextStyle, Color, TextAlign.configure({ types: ["heading", "paragraph"] })],
+    extensions: [
+      StarterKit.configure({
+        link: {
+          openOnClick: false
+        }
+      }),
+      Image,
+      TextStyle,
+      Color,
+      TextAlign.configure({ types: ["heading", "paragraph"] })
+    ],
+    immediatelyRender: false,
     content: value,
     editorProps: { attributes: { class: "prose-editor rounded-md border bg-background p-4 text-sm min-h-[200px]" } },
     onUpdate: ({ editor }) => onChange(editor.getHTML()),

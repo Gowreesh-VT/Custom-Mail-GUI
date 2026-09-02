@@ -19,12 +19,12 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     try {
       const body = Object.fromEntries(formData.entries());
       const res = await fetch(`/api/auth/${mode}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || (res.status === 500 ? "Internal server error. Please check server logs." : "Authentication failed"));
       toast.success(mode === "login" ? "Welcome back" : "Account created");
       window.location.href = data.user?.forcePasswordReset ? "/settings" : "/compose";
     } catch (error: any) {
-      toast.error(error.message);
+      toast.error(error.message || "An unexpected error occurred");
     } finally {
       setLoading(false);
     }
@@ -33,7 +33,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     <Card className="w-full max-w-md">
       <CardHeader>
         <div className="flex justify-center">
-          <Image src="/main-logo.svg" alt="Custom Mail" width={72} height={72} className="h-16 w-16" />
+          <Image src="/main-logo.svg" alt="Custom Mail" width={72} height={72} className="h-16 w-16" priority />
         </div>
         <CardTitle>{mode === "login" ? "Log in" : "Create account"}</CardTitle>
         <CardDescription>{mode === "login" ? "Access your SMTP email client." : "Start with your own isolated workspace."}</CardDescription>

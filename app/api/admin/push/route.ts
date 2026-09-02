@@ -151,9 +151,9 @@ export async function POST(req: NextRequest) {
       });
       sent++;
     } catch (err: unknown) {
-      // If subscription expired / invalid, deactivate it
+      // If subscription expired / invalid / mismatched VAPID credentials, deactivate it
       const errAny = err as { statusCode?: number };
-      if (errAny?.statusCode === 410 || errAny?.statusCode === 404) {
+      if (errAny?.statusCode === 410 || errAny?.statusCode === 404 || errAny?.statusCode === 403 || errAny?.statusCode === 400) {
         await prisma.pushSubscription.update({
           where: { id: sub.id },
           data: { isActive: false },
