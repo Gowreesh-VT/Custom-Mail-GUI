@@ -254,15 +254,28 @@ export async function replaceQrPlaceholders(
       const contentType = await resolveContentType(campaignId, config);
       const fields = buildFieldMap(config, recipient.data);
       const encodedData = buildEncodedPayload(contentType, config, recipient.data, fields);
-      const qrCode = await createQrRecord(prisma, {
-        campaignId,
-        userId,
-        contentType,
-        encodedData,
-        recipientEmail: recipient.email,
-        recipientName: recipient.data.name || recipient.data.NAME || null,
-        mergeData: recipient.data
-      });
+      let qrCode = recipient.email
+        ? await prisma.qrCode.findFirst({
+            where: {
+              campaignId,
+              userId,
+              recipientEmail: recipient.email,
+              status: "active"
+            }
+          })
+        : null;
+
+      if (!qrCode) {
+        qrCode = await createQrRecord(prisma, {
+          campaignId,
+          userId,
+          contentType,
+          encodedData,
+          recipientEmail: recipient.email,
+          recipientName: recipient.data.name || recipient.data.NAME || null,
+          mergeData: recipient.data
+        });
+      }
       const imageUrl = qrCode.imageUrl || getQrImageUrl(qrCode.id);
       options?.onGenerated?.(imageUrl, config);
       const width = Number(config.width) || 200;
