@@ -15,10 +15,10 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning className="scroll-smooth" data-scroll-behavior="smooth">
+    <html lang="en" suppressHydrationWarning className="dark scroll-smooth" data-scroll-behavior="smooth" style={{ colorScheme: "dark" }}>
       <head>
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#09090b" />
+        <meta name="theme-color" content="#000000" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
@@ -35,8 +35,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <link rel="apple-touch-startup-image" media="(device-width: 414px)" href="/splash/splash-414.png" />
         <link rel="apple-touch-startup-image" media="(device-width: 375px)" href="/splash/splash-375.png" />
       </head>
-      <body>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
+      <body className="bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary">
+        <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false} disableTransitionOnChange>
           {children}
           <Toaster richColors closeButton />
           <Analytics />

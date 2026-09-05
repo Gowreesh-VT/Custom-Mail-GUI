@@ -3,121 +3,120 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: rgb(253, 253, 253);
-  --foreground: rgb(0, 0, 0);
-  --card: rgb(253, 253, 253);
-  --card-foreground: rgb(0, 0, 0);
-  --popover: rgb(252, 252, 252);
-  --popover-foreground: rgb(0, 0, 0);
-  --primary: rgb(81, 240, 168);
-  --primary-foreground: rgb(0, 0, 0);
-  --secondary: rgb(252, 253, 253);
-  --secondary-foreground: rgb(8, 8, 8);
-  --muted: rgb(245, 245, 245);
-  --muted-foreground: rgb(82, 82, 82);
-  --accent: rgb(249, 255, 252);
-  --accent-foreground: rgb(13, 159, 93);
-  --destructive: rgb(248, 29, 69);
+  --background: rgb(0, 0, 0);
+  --foreground: rgb(244, 244, 245);
+  --card: rgb(14, 14, 16);
+  --card-foreground: rgb(244, 244, 245);
+  --popover: rgb(16, 16, 18);
+  --popover-foreground: rgb(244, 244, 245);
+  --primary: rgb(52, 211, 153);
+  --primary-foreground: rgb(6, 44, 29);
+  --secondary: rgb(24, 24, 27);
+  --secondary-foreground: rgb(244, 244, 245);
+  --muted: rgb(24, 24, 27);
+  --muted-foreground: rgb(161, 161, 170);
+  --accent: rgb(24, 24, 27);
+  --accent-foreground: rgb(244, 244, 245);
+  --destructive: rgb(239, 68, 68);
   --destructive-foreground: rgb(255, 255, 255);
-  --border: rgb(244, 246, 248);
-  --input: rgb(235, 235, 235);
-  --ring: rgb(81, 240, 168);
-  --sent: 158 64% 39%;
-  --failed: 0 72% 51%;
-  --scheduled: 221 83% 53%;
-  --smtp: 173 80% 40%;
-  --warning: 38 92% 50%;
-  --chart-1: rgb(81, 240, 168);
-  --chart-2: rgb(126, 254, 143);
-  --chart-3: rgb(244, 66, 110);
-  --chart-4: rgb(46, 189, 246);
-  --chart-5: rgb(255, 177, 136);
-  --sidebar: rgb(255, 255, 255);
-  --sidebar-foreground: rgb(0, 0, 0);
-  --sidebar-primary: rgb(0, 0, 0);
-  --sidebar-primary-foreground: rgb(255, 255, 255);
-  --sidebar-accent: rgb(228, 254, 243);
-  --sidebar-accent-foreground: rgb(0, 0, 0);
-  --sidebar-border: rgb(235, 235, 235);
-  --sidebar-ring: rgb(0, 0, 0);
-  --font-sans: Plus Jakarta Sans, sans-serif;
-  --font-serif: Lora, serif;
-  --font-mono: IBM Plex Mono, monospace;
-  --radius: 1.4rem;
+  --border: rgb(39, 39, 42);
+  --input: rgb(39, 39, 42);
+  --ring: rgb(52, 211, 153);
+  --sent: 158 64% 45%;
+  --failed: 0 72% 58%;
+  --scheduled: 160 84% 45%;
+  --smtp: 173 80% 45%;
+  --warning: 38 92% 55%;
+  --chart-1: rgb(52, 211, 153);
+  --chart-2: rgb(45, 212, 191);
+  --chart-3: rgb(248, 113, 113);
+  --chart-4: rgb(192, 132, 252);
+  --chart-5: rgb(251, 191, 36);
+  --sidebar: rgb(10, 10, 12);
+  --sidebar-foreground: rgb(244, 244, 245);
+  --sidebar-primary: rgb(52, 211, 153);
+  --sidebar-primary-foreground: rgb(6, 44, 29);
+  --sidebar-accent: rgb(24, 24, 27);
+  --sidebar-accent-foreground: rgb(244, 244, 245);
+  --sidebar-border: rgb(34, 34, 38);
+  --sidebar-ring: rgb(52, 211, 153);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --radius: 0.625rem;
   --shadow-x: 0;
   --shadow-y: 1px;
   --shadow-blur: 3px;
   --shadow-spread: 0px;
   --shadow-opacity: 0.1;
   --shadow-color: oklch(0 0 0);
-  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
-  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
-  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
-  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
-  --tracking-normal: 0em;
-  --spacing: 0.27rem;
+  --shadow-2xs: 0 1px 2px 0px hsl(0 0% 0% / 0.20);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --shadow: 0 4px 8px -1px hsl(0 0% 0% / 0.40), 0 2px 4px -2px hsl(0 0% 0% / 0.40);
+  --shadow-md: 0 6px 14px -2px hsl(0 0% 0% / 0.45), 0 3px 6px -3px hsl(0 0% 0% / 0.45);
+  --shadow-lg: 0 12px 24px -4px hsl(0 0% 0% / 0.50), 0 4px 8px -4px hsl(0 0% 0% / 0.40);
+  --shadow-xl: 0 20px 30px -6px hsl(0 0% 0% / 0.60), 0 8px 12px -6px hsl(0 0% 0% / 0.50);
+  --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.70);
+  --tracking-normal: -0.01em;
 }
 
 .dark {
   --background: rgb(0, 0, 0);
-  --foreground: rgb(240, 240, 240);
-  --card: rgb(10, 10, 10);
-  --card-foreground: rgb(240, 240, 240);
-  --popover: rgb(26, 27, 27);
-  --popover-foreground: rgb(240, 240, 240);
-  --primary: rgb(81, 240, 168);
-  --primary-foreground: rgb(0, 0, 0);
-  --secondary: rgb(33, 106, 73);
-  --secondary-foreground: rgb(240, 240, 240);
-  --muted: rgb(37, 37, 39);
-  --muted-foreground: rgb(150, 150, 150);
-  --accent: rgb(9, 55, 35);
-  --accent-foreground: rgb(254, 254, 254);
-  --destructive: rgb(245, 38, 55);
+  --foreground: rgb(244, 244, 245);
+  --card: rgb(14, 14, 16);
+  --card-foreground: rgb(244, 244, 245);
+  --popover: rgb(16, 16, 18);
+  --popover-foreground: rgb(244, 244, 245);
+  --primary: rgb(52, 211, 153);
+  --primary-foreground: rgb(6, 44, 29);
+  --secondary: rgb(24, 24, 27);
+  --secondary-foreground: rgb(244, 244, 245);
+  --muted: rgb(24, 24, 27);
+  --muted-foreground: rgb(161, 161, 170);
+  --accent: rgb(24, 24, 27);
+  --accent-foreground: rgb(244, 244, 245);
+  --destructive: rgb(239, 68, 68);
   --destructive-foreground: rgb(255, 255, 255);
-  --border: rgb(25, 25, 26);
-  --input: rgb(59, 59, 59);
-  --ring: rgb(81, 240, 168);
+  --border: rgb(39, 39, 42);
+  --input: rgb(39, 39, 42);
+  --ring: rgb(52, 211, 153);
   --sent: 158 64% 45%;
   --failed: 0 72% 58%;
-  --scheduled: 217 91% 60%;
+  --scheduled: 160 84% 45%;
   --smtp: 173 80% 45%;
-  --warning: 38 92% 55
-  --chart-1: rgb(81, 240, 168);
-  --chart-2: rgb(158, 255, 161);
-  --chart-3: rgb(243, 58, 79);
-  --chart-4: rgb(95, 208, 255);
-  --chart-5: rgb(255, 177, 136);
-  --sidebar: rgb(10, 10, 10);
-  --sidebar-foreground: rgb(240, 240, 240);
-  --sidebar-primary: rgb(81, 240, 168);
-  --sidebar-primary-foreground: rgb(255, 255, 255);
-  --sidebar-accent: rgb(0, 51, 27);
-  --sidebar-accent-foreground: rgb(81, 240, 168);
-  --sidebar-border: rgb(53, 58, 62);
-  --sidebar-ring: rgb(81, 240, 168);
-  --font-sans: Plus Jakarta Sans, sans-serif;
-  --font-serif: Lora, serif;
-  --font-mono: IBM Plex Mono, monospace;
-  --radius: 1.4rem;
+  --warning: 38 92% 55%;
+  --chart-1: rgb(52, 211, 153);
+  --chart-2: rgb(45, 212, 191);
+  --chart-3: rgb(248, 113, 113);
+  --chart-4: rgb(192, 132, 252);
+  --chart-5: rgb(251, 191, 36);
+  --sidebar: rgb(10, 10, 12);
+  --sidebar-foreground: rgb(244, 244, 245);
+  --sidebar-primary: rgb(52, 211, 153);
+  --sidebar-primary-foreground: rgb(6, 44, 29);
+  --sidebar-accent: rgb(24, 24, 27);
+  --sidebar-accent-foreground: rgb(244, 244, 245);
+  --sidebar-border: rgb(34, 34, 38);
+  --sidebar-ring: rgb(52, 211, 153);
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  --radius: 0.625rem;
   --shadow-x: 0;
   --shadow-y: 1px;
   --shadow-blur: 3px;
   --shadow-spread: 0px;
   --shadow-opacity: 0.1;
   --shadow-color: oklch(0 0 0);
-  --shadow-2xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.05);
-  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-  --shadow: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 1px 2px -1px hsl(0 0% 0% / 0.10);
-  --shadow-md: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 2px 4px -1px hsl(0 0% 0% / 0.10);
-  --shadow-lg: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 4px 6px -1px hsl(0 0% 0% / 0.10);
-  --shadow-xl: 0 1px 3px 0px hsl(0 0% 0% / 0.10), 0 8px 10px -1px hsl(0 0% 0% / 0.10);
-  --shadow-2xl: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  --shadow-2xs: 0 1px 2px 0px hsl(0 0% 0% / 0.20);
+  --shadow-xs: 0 1px 3px 0px hsl(0 0% 0% / 0.25);
+  --shadow-sm: 0 1px 3px 0px hsl(0 0% 0% / 0.30), 0 1px 2px -1px hsl(0 0% 0% / 0.30);
+  --shadow: 0 4px 8px -1px hsl(0 0% 0% / 0.40), 0 2px 4px -2px hsl(0 0% 0% / 0.40);
+  --shadow-md: 0 6px 14px -2px hsl(0 0% 0% / 0.45), 0 3px 6px -3px hsl(0 0% 0% / 0.45);
+  --shadow-lg: 0 12px 24px -4px hsl(0 0% 0% / 0.50), 0 4px 8px -4px hsl(0 0% 0% / 0.40);
+  --shadow-xl: 0 20px 30px -6px hsl(0 0% 0% / 0.60), 0 8px 12px -6px hsl(0 0% 0% / 0.50);
+  --shadow-2xl: 0 25px 50px -12px hsl(0 0% 0% / 0.70);
 }
 
 @theme inline {
@@ -210,4 +209,41 @@
 .no-scrollbar {
   -ms-overflow-style: none;  /* IE and Edge */
   scrollbar-width: none;  /* Firefox */
+}
+
+/* SaaS Utility Classes */
+.bg-grid {
+  background-image: radial-gradient(rgba(255, 255, 255, 0.08) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.light .bg-grid {
+  background-image: radial-gradient(rgba(0, 0, 0, 0.06) 1px, transparent 1px);
+}
+
+.glass-card {
+  background: rgba(14, 14, 16, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.light .glass-card {
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+}
+
+.card-glow {
+  position: relative;
+}
+
+.card-glow::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(52, 211, 153, 0.4), transparent);
+  pointer-events: none;
 }
