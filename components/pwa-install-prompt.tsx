@@ -141,7 +141,7 @@ export function PwaInstallPrompt() {
           <div className="space-y-4 pt-2">
             <div className="flex items-center gap-3">
               <div className="h-12 w-12 rounded-xl border border-zinc-800 bg-zinc-900 flex items-center justify-center text-primary font-black shadow-inner">
-                <Download className="h-6 w-6 text-blue-500" />
+                <Download className="h-6 w-6 text-primary" />
               </div>
               <div className="text-left">
                 <h3 className="font-bold text-white text-sm">Add to Home Screen</h3>
@@ -151,7 +151,7 @@ export function PwaInstallPrompt() {
             <div className="flex gap-2">
               <Button 
                 onClick={() => triggerAndroidInstall(deferredPrompt)}
-                className="flex-1 bg-blue-600 hover:bg-blue-500 text-white font-bold"
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold"
               >
                 Install
               </Button>
@@ -168,7 +168,7 @@ export function PwaInstallPrompt() {
 
         {platform === "ios" && (
           <div className="space-y-4 pt-2 text-left">
-            <div className="flex items-center gap-2 text-blue-400">
+            <div className="flex items-center gap-2 text-primary">
               <Download className="h-5 w-5" />
               <h3 className="font-bold text-white text-sm">Install Custom Mail</h3>
             </div>
@@ -180,7 +180,7 @@ export function PwaInstallPrompt() {
                 <div className="h-6 w-6 rounded bg-zinc-900 flex items-center justify-center font-bold text-zinc-400 border border-zinc-800 shrink-0">1</div>
                 <div className="flex items-center gap-1.5 flex-wrap">
                   Tap the Share button 
-                  <span className="inline-flex items-center justify-center p-1 rounded bg-zinc-900 border border-zinc-800"><Share className="h-3 w-3 text-blue-500" /></span> 
+                  <span className="inline-flex items-center justify-center p-1 rounded bg-zinc-900 border border-zinc-800"><Share className="h-3 w-3 text-primary" /></span> 
                   {isSafari ? "at the bottom of Safari." : "in your mobile browser."}
                 </div>
               </div>
@@ -211,7 +211,7 @@ export function PwaInstallPrompt() {
         {platform === null && (
           <div className="space-y-3 pt-2 text-left">
             <div className="flex items-center gap-3">
-              <Download className="h-5 w-5 text-blue-500 shrink-0" />
+              <Download className="h-5 w-5 text-primary shrink-0" />
               <h3 className="font-bold text-white text-sm">Install App</h3>
             </div>
             <p className="text-zinc-400 text-xs leading-relaxed">

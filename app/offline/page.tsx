@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Calendar, FileText, Layout, Mail, RefreshCw, Send, WifiOff } from "lucide-react";
+import { Calendar, FileText, Layout, LayoutDashboard, Mail, RefreshCw, Send, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 export default function OfflinePage() {
@@ -31,6 +31,7 @@ export default function OfflinePage() {
   }, []);
 
   const cachedLinks = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/compose", label: "Compose", icon: Mail },
     { href: "/sent", label: "Sent History", icon: Send },
     { href: "/drafts", label: "Drafts", icon: FileText },
@@ -41,7 +42,7 @@ export default function OfflinePage() {
   return (
     <main className="relative min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-4">
       {/* Ambient background glow */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(59,130,246,0.03),transparent_60%)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(16,185,129,0.04),transparent_60%)]" />
 
       <div className="relative w-full max-w-md text-center space-y-8 bg-zinc-900/40 border border-zinc-800/80 rounded-2xl p-8 backdrop-blur-xl shadow-2xl">
         {/* App Logo */}

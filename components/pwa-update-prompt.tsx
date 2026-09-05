@@ -80,7 +80,7 @@ export function PwaUpdatePrompt() {
   return (
     <div className="fixed bottom-20 inset-x-4 md:left-auto md:right-4 z-50 p-4 max-w-sm rounded-xl bg-zinc-900 border border-zinc-800 text-left shadow-2xl animate-in slide-in-from-bottom duration-300">
       <div className="flex gap-3">
-        <div className="h-10 w-10 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 flex items-center justify-center shrink-0">
+        <div className="h-10 w-10 rounded-lg bg-primary/10 border border-primary/20 text-primary flex items-center justify-center shrink-0">
           <RefreshCw className="h-5 w-5 animate-spin-slow" />
         </div>
         <div className="flex-1 space-y-1">
@@ -90,7 +90,7 @@ export function PwaUpdatePrompt() {
             <Button 
               size="sm"
               onClick={handleUpdate}
-              className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs h-8"
+              className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs h-8"
             >
               Update Now
             </Button>

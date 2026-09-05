@@ -2,7 +2,7 @@
   "name": "Custom Mail",
   "short_name": "Mail",
   "description": "Professional email client with templates, bulk send and QR codes",
-  "start_url": "/compose",
+  "start_url": "/dashboard",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",

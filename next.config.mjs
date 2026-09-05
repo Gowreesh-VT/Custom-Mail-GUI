@@ -12,7 +12,7 @@ const withPWA = withPWAInit({
   runtimeCaching: [
     // Cache app pages (stale-while-revalidate)
     {
-      urlPattern: /^https:\/\/.*\/(compose|sent|drafts|templates|scheduled|bulk|monitor|settings|certificates|contacts|qr)$/,
+      urlPattern: /^https:\/\/.*\/(dashboard|compose|sent|drafts|templates|scheduled|bulk|monitor|settings|certificates|contacts|qr)$/,
       handler: "StaleWhileRevalidate",
       options: {
         cacheName: "app-pages",
@@ -60,7 +60,7 @@ const withPWA = withPWAInit({
     },
     // Cache API reads (short lived)
     {
-      urlPattern: /\/api\/(sent|drafts|templates|scheduled|contacts|certificates|announcements\/active|user\/stats\/quick)/,
+      urlPattern: /\/api\/(sent|drafts|templates|scheduled|contacts|certificates|announcements\/active|user\/stats\/quick|user\/dashboard)/,
       handler: "NetworkFirst",
       options: {
         cacheName: "api-reads",
