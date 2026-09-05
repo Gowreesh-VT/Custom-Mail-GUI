@@ -283,15 +283,20 @@ export async function normalizeAttachments(userId: string, attachments: SendPayl
       continue;
     }
     if (!attachment.path) {
-      throw new Error("Invalid attachment payload");
+      console.warn(`[mailer] Skipping attachment ${filename || "unnamed"}: missing file path and content buffer`);
+      continue;
     }
-    const resolvedPath = resolveUserAttachmentPath(userId, attachment.path);
-    await access(resolvedPath);
-    normalized.push({
-      name: filename,
-      path: resolvedPath,
-      contentType: attachment.contentType
-    });
+    try {
+      const resolvedPath = resolveUserAttachmentPath(userId, attachment.path);
+      await access(resolvedPath);
+      normalized.push({
+        name: filename,
+        path: resolvedPath,
+        contentType: attachment.contentType
+      });
+    } catch (err: any) {
+      console.warn(`[mailer] Could not access attachment ${filename || "unnamed"} at ${attachment.path}: ${err.message}`);
+    }
   }
   return normalized;
 }

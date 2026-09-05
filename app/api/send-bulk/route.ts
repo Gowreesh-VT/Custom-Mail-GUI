@@ -7,6 +7,8 @@ import { sendEmailWithFallback } from "@/lib/mailer";
 import { applyMergeFields, jsonError } from "@/lib/utils";
 import { injectTracking } from "@/lib/tracking";
 import { logAudit } from "@/lib/audit";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import { fromJson, toJson } from "@/lib/json-fields";
 import { prisma } from "@/lib/prisma";
 import { detectQrPlaceholders, replaceQrPlaceholders, type QrFieldConfig } from "@/lib/qr";
@@ -58,12 +60,13 @@ export async function POST(req: NextRequest) {
     certificateConfig: fromJson<CertificateConfig | null>(String(form.get("certificateConfig") || "null"), null),
     letterConfig: fromJson<LetterConfig | null>(String(form.get("letterConfig") || "null"), null),
     bulkJobId: String(form.get("bulkJobId") || "").trim(),
-    skipAlreadySent: form.get("skipAlreadySent") !== "false",
+    duplicateMode: (form.get("duplicateMode") as "skip" | "allow") || "skip",
+    skipAlreadySent: form.get("skipAlreadySent") === "true",
     startIndex: Number(form.get("startIndex") || 0),
     isLastBatch: form.get("isLastBatch") === "true" || form.get("isLastBatch") === undefined
   };
 
-  const { templateId, columnMap, qrConfig, qrFieldConfigs: requestQrFieldConfigs = [], certificateConfig, letterConfig, skipAlreadySent, startIndex, isLastBatch } = body;
+  const { templateId, columnMap, qrConfig, qrFieldConfigs: requestQrFieldConfigs = [], certificateConfig, letterConfig, duplicateMode, skipAlreadySent, startIndex, isLastBatch } = body;
   const delayMs = Number.isFinite(body.delayMs) && body.delayMs > 0 ? body.delayMs : 0;
   const template = await prisma.template.findFirst({ where: { id: templateId, userId: String(user._id) } });
   if (!template) return jsonError("Template not found", 404);
@@ -78,17 +81,45 @@ export async function POST(req: NextRequest) {
   const bulkJobId = body.bulkJobId || crypto.randomUUID();
 
   if (startIndex === 0) {
-    await logAudit("email.bulk_started", String(user._id), { recipientCount: rows.length, templateId, bulkJobId }, undefined, req);
+    await logAudit("email.bulk_started", String(user._id), { recipientCount: rows.length, templateId, bulkJobId, duplicateMode }, undefined, req);
   }
 
-  // Pre-fetch sent emails for this user and template to skip already sent recipients
-  const sentSet = new Set<string>();
-  if (skipAlreadySent) {
+  // Pre-fetch sent emails for deduplication
+  const inCampaignDuplicateSet = new Set<string>();
+  const pastCampaignSentSet = new Set<string>();
+
+  // 1. If duplicateMode is "skip", protect against duplicate sends within this campaign run
+  if (duplicateMode === "skip" && bulkJobId) {
+    const jobRecords = await prisma.email.findMany({
+      where: {
+        userId: String(user._id),
+        status: "sent",
+        bulkJobId
+      },
+      select: { toAddresses: true }
+    });
+    for (const record of jobRecords) {
+      try {
+        const parsedTo = JSON.parse(record.toAddresses);
+        if (Array.isArray(parsedTo)) {
+          parsedTo.forEach((addr: string) => inCampaignDuplicateSet.add(String(addr || "").trim().toLowerCase()));
+        }
+      } catch {
+        if (typeof record.toAddresses === "string") {
+          record.toAddresses.split(",").forEach((addr: string) => inCampaignDuplicateSet.add(addr.trim().toLowerCase()));
+        }
+      }
+    }
+  }
+
+  // 2. If skipAlreadySent is true, also skip recipients who received this template in earlier campaigns
+  if (skipAlreadySent && templateId) {
     const sentRecords = await prisma.email.findMany({
       where: {
         userId: String(user._id),
         status: "sent",
-        ...(templateId ? { templateId } : {})
+        templateId,
+        ...(bulkJobId ? { bulkJobId: { not: bulkJobId } } : {})
       },
       select: { toAddresses: true }
     });
@@ -96,13 +127,13 @@ export async function POST(req: NextRequest) {
       try {
         const parsedTo = JSON.parse(record.toAddresses);
         if (Array.isArray(parsedTo)) {
-          parsedTo.forEach((addr: string) => sentSet.add(String(addr || "").trim().toLowerCase()));
+          parsedTo.forEach((addr: string) => pastCampaignSentSet.add(String(addr || "").trim().toLowerCase()));
         }
       } catch {
         if (typeof record.toAddresses === "string") {
           record.toAddresses
             .split(",")
-            .forEach((addr: string) => sentSet.add(addr.trim().toLowerCase()));
+            .forEach((addr: string) => pastCampaignSentSet.add(addr.trim().toLowerCase()));
         }
       }
     }
@@ -126,14 +157,32 @@ export async function POST(req: NextRequest) {
           const globalIndex = startIndex + index;
           const emailAddr = String(row.email || "").trim().toLowerCase();
 
-          // Check if already sent and should be skipped
-          if (skipAlreadySent && sentSet.has(emailAddr)) {
+          // 1. Past campaign skip check
+          if (skipAlreadySent && pastCampaignSentSet.has(emailAddr)) {
             skippedCount++;
             controller.enqueue(encoder.encode(`${toJson({
               type: "skipped",
               index: globalIndex,
               email: row.email,
-              reason: "Already sent in this template/campaign",
+              reason: "Already received this template in an earlier campaign",
+              failedQrCount,
+              certificateCount,
+              failedCertificateCount,
+              letterCount,
+              failedLetterCount,
+              skippedCount
+            })}\n`));
+            continue;
+          }
+
+          // 2. In-campaign duplicate check (when duplicateMode === "skip")
+          if (duplicateMode === "skip" && inCampaignDuplicateSet.has(emailAddr)) {
+            skippedCount++;
+            controller.enqueue(encoder.encode(`${toJson({
+              type: "skipped",
+              index: globalIndex,
+              email: row.email,
+              reason: "Duplicate recipient skipped (only 1 email per address)",
               failedQrCount,
               certificateCount,
               failedCertificateCount,
@@ -220,6 +269,33 @@ export async function POST(req: NextRequest) {
               })}\n`));
             }
           }
+          const persistedAttachments: Array<{ name: string; size: number; mimeType: string; path?: string }> = [];
+          const uploadDir = path.join(process.cwd(), "uploads", String(user._id));
+          if (attachments.length > 0) {
+            try {
+              await mkdir(uploadDir, { recursive: true });
+            } catch {}
+          }
+          for (const attachment of attachments) {
+            try {
+              const safeName = `bulk-${Date.now()}-${attachment.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
+              const filePath = path.join(uploadDir, safeName);
+              await writeFile(filePath, attachment.content);
+              persistedAttachments.push({
+                name: attachment.name,
+                size: attachment.content.length,
+                mimeType: attachment.contentType,
+                path: filePath
+              });
+            } catch {
+              persistedAttachments.push({
+                name: attachment.name,
+                size: attachment.content.length,
+                mimeType: attachment.contentType
+              });
+            }
+          }
+
           const payload = {
             to: [row.email],
             subject,
@@ -233,7 +309,7 @@ export async function POST(req: NextRequest) {
                 toAddresses: toJson(payload.to)!,
                 subject: payload.subject,
                 bodyHtml: payload.bodyHtml,
-                attachments: toJson(attachments.map((attachment) => ({ name: attachment.name, size: attachment.content.length, mimeType: attachment.contentType }))),
+                attachments: toJson(persistedAttachments),
                 status: "sending",
                 isBulk: true,
                 bulkJobId,
@@ -255,7 +331,9 @@ export async function POST(req: NextRequest) {
 
             if (result.success) {
               successCount++;
-              sentSet.add(emailAddr);
+              if (duplicateMode === "skip") {
+                inCampaignDuplicateSet.add(emailAddr);
+              }
               await prisma.email.update({
                 where: { id: email.id },
                 data: { status: "sent", usedFallbackSmtp: result.usedFallback }

@@ -39,6 +39,19 @@ async function processScheduled(req: NextRequest) {
   const now = new Date();
   const cutoff24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
 
+  // Clean up zombie "sending" jobs that timed out or crashed (> 15 minutes)
+  const cutoff15m = new Date(now.getTime() - 15 * 60 * 1000);
+  await prisma.scheduledEmail.updateMany({
+    where: {
+      status: "sending",
+      updatedAt: { lt: cutoff15m }
+    },
+    data: {
+      status: "failed",
+      errorMsg: "Execution timed out while sending. Please verify delivery or retry."
+    }
+  });
+
   await prisma.scheduledEmail.updateMany({
     where: {
       status: "pending",
@@ -100,39 +113,45 @@ async function processScheduled(req: NextRequest) {
         throw new Error(result.error || "Failed to send scheduled email");
       }
 
+      // SMTP was successful: mark scheduledEmail as sent immediately
       await prisma.scheduledEmail.update({
         where: { id: scheduled.id },
         data: { status: "sent", sentAt }
       });
 
-      await prisma.email.create({
-        data: {
-          userId: scheduled.userId,
-          toAddresses: scheduled.toAddresses,
-          ccAddresses: scheduled.ccAddresses,
-          bccAddresses: scheduled.bccAddresses,
-          replyTo: scheduled.replyTo,
-          subject: scheduled.subject,
-          bodyHtml: scheduled.bodyHtml,
-          attachments: scheduled.attachments,
-          status: "sent",
-          isBulk: false,
-          usedFallbackSmtp: result.usedFallback,
-          sentAt
-        }
-      });
+      // Safely perform secondary logging so transient DB errors don't trigger duplicate re-sends
+      try {
+        await prisma.email.create({
+          data: {
+            userId: scheduled.userId,
+            toAddresses: scheduled.toAddresses,
+            ccAddresses: scheduled.ccAddresses,
+            bccAddresses: scheduled.bccAddresses,
+            replyTo: scheduled.replyTo,
+            subject: scheduled.subject,
+            bodyHtml: scheduled.bodyHtml,
+            attachments: scheduled.attachments,
+            status: "sent",
+            isBulk: false,
+            usedFallbackSmtp: result.usedFallback,
+            sentAt
+          }
+        });
 
-      await logAudit({
-        action: "email.scheduled_sent",
-        category: "EMAIL",
-        userId: scheduled.userId,
-        userName: scheduled.user.name,
-        metadata: {
-          scheduledEmailId: scheduled.id,
-          to,
-          subject: scheduled.subject
-        }
-      });
+        await logAudit({
+          action: "email.scheduled_sent",
+          category: "EMAIL",
+          userId: scheduled.userId,
+          userName: scheduled.user.name,
+          metadata: {
+            scheduledEmailId: scheduled.id,
+            to,
+            subject: scheduled.subject
+          }
+        });
+      } catch (loggingErr) {
+        console.error(`[cron] Email was sent via SMTP, but logging failed for ${scheduled.id}:`, loggingErr);
+      }
 
       // Trigger PWA push notification summary
       sendPushToUser(scheduled.userId, {

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowRight, Download, RotateCcw, ShieldCheck, BarChart2, Clock, Timer, Zap, FileText, FolderOpen, Laptop, Sparkles, FlaskConical, ClipboardList } from "lucide-react";
+import { AlertTriangle, Award, Check, FileSpreadsheet, Layers, Loader2, Mail, Play, QrCode, Square, Upload, CheckCircle2, AlertCircle, ArrowLeft, ArrowRight, Download, ShieldCheck, BarChart2, Clock, Timer, Zap, FileText, FolderOpen, Laptop, Smartphone, Sparkles, FlaskConical, ClipboardList, Copy, Settings2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 import { replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
+import { EmailDevicePreview } from "@/components/email-device-preview";
 
 type TemplateListItem = {
   _id: string;
@@ -44,6 +45,9 @@ export default function BulkPage() {
   const [file, setFile] = useState<File | null>(null);
   const [rows, setRows] = useState<Record<string, string>[]>([]);
   const [columns, setColumns] = useState<string[]>([]);
+  const [rawFileRows, setRawFileRows] = useState<Record<string, unknown>[]>([]);
+  const [emailColumn, setEmailColumn] = useState<string>("");
+  const [step1SelectedEmailCol, setStep1SelectedEmailCol] = useState<string>("");
   const [templates, setTemplates] = useState<TemplateListItem[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [certificateTemplates, setCertificateTemplates] = useState<CertificateTemplate[]>([]);
@@ -69,10 +73,12 @@ export default function BulkPage() {
   const [qrWarningOpen, setQrWarningOpen] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Batching and Anti-Duplicate Resume Engine
+  // Batching and Duplicate Handling Engine: Option 1 (skip) vs Option 2 (allow)
   const [batchSize, setBatchSize] = useState(30);
-  const [skipAlreadySent, setSkipAlreadySent] = useState(true);
+  const [duplicateMode, setDuplicateMode] = useState<"skip" | "allow">("skip");
+  const [skipPastCampaigns, setSkipPastCampaigns] = useState(false);
   const [processedEmails, setProcessedEmails] = useState<Set<string>>(new Set());
+  const [processedIndices, setProcessedIndices] = useState<Set<number>>(new Set());
   const [currentBatchInfo, setCurrentBatchInfo] = useState<{ current: number; total: number } | null>(null);
   const bulkJobIdRef = useRef<string>("");
 
@@ -167,41 +173,74 @@ export default function BulkPage() {
     }).catch((error) => toast.error(error.message));
   }, [templateId, columns]);
 
-  /** Normalise a flat list of raw objects into rows with a resolved `email` key */
-  function normaliseRows(rawRows: Record<string, unknown>[]): { fields: string[]; cleanRows: Record<string, string>[]; emailKey: string | undefined } {
-    if (rawRows.length === 0) return { fields: [], cleanRows: [], emailKey: undefined };
-    
-    // Gather all unique keys across all rows (handles JSON with optional fields & sparse Excel sheets)
-    const allKeysSet = new Set<string>();
-    for (const r of rawRows) {
-      if (r && typeof r === "object") {
-        for (const k of Object.keys(r)) {
-          allKeysSet.add(k);
-        }
+  /** Intelligent heuristic to detect which column contains email addresses */
+  function detectEmailKey(fields: string[], rawRows: Record<string, unknown>[]): string | undefined {
+    // 1. Exact canonical matches (case-insensitive and normalized)
+    const exactMatches = [
+      "email", "e-mail", "email address", "email_address", "recipient", "to", "mail",
+      "email id", "email_id", "emailid", "mail id", "mail_id", "contact email", "contact_email",
+      "primary email", "primary_email", "work email", "work_email", "personal email", "personal_email",
+      "student email", "student_email", "attendee email", "attendee_email", "participant email",
+      "participant_email", "user email", "user_email", "customer email", "customer_email",
+      "client email", "client_email", "send to", "send_to", "target email", "target_email", "receiver"
+    ];
+
+    for (const match of exactMatches) {
+      const found = fields.find((f) => {
+        const clean = f.toLowerCase().trim().replace(/[\s_-]+/g, " ");
+        return clean === match.replace(/[\s_-]+/g, " ") || clean === match;
+      });
+      if (found) return found;
+    }
+
+    // 2. Substring matches: column name contains "email" or "mail"
+    const substringMatch = fields.find((f) => {
+      const clean = f.toLowerCase().trim();
+      return clean.includes("email") || clean.includes("mail");
+    });
+    if (substringMatch) return substringMatch;
+
+    // 3. Content heuristics: inspect first 15 sample rows for actual email patterns
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    for (const f of fields) {
+      let matchCount = 0;
+      const sampleSize = Math.min(rawRows.length, 15);
+      for (let i = 0; i < sampleSize; i++) {
+        const val = String(rawRows[i]?.[f] ?? "").trim();
+        if (emailRegex.test(val)) matchCount++;
+      }
+      if (sampleSize > 0 && matchCount >= Math.min(sampleSize, 2)) {
+        return f;
       }
     }
-    const fields = Array.from(allKeysSet);
 
-    const emailKey = fields.find((f) => {
-      const clean = f.toLowerCase().trim();
-      return clean === "email" || clean === "e-mail" || clean === "email address" || clean === "recipient" || clean === "to";
-    });
+    return undefined;
+  }
 
-    const cleanRows = rawRows
+  /** Apply a chosen email column to raw rows, recalculating clean rows and recipient count */
+  function applyEmailColumn(selectedCol: string, rawData: Record<string, unknown>[] = rawFileRows) {
+    setEmailColumn(selectedCol);
+    setStep1SelectedEmailCol(selectedCol);
+    if (!selectedCol) {
+      setRows([]);
+      return;
+    }
+
+    const cleanRows = rawData
       .filter((row) => row && typeof row === "object")
       .map((row) => {
         const cleaned: Record<string, string> = {};
         for (const [k, v] of Object.entries(row)) {
           cleaned[String(k)] = String(v ?? "").trim();
         }
-        if (emailKey && cleaned[emailKey]) {
-          cleaned.email = cleaned[emailKey];
+        if (selectedCol && cleaned[selectedCol]) {
+          cleaned.email = cleaned[selectedCol];
         }
         return cleaned;
       })
-      .filter((row) => Boolean(emailKey && row[emailKey]?.trim()));
+      .filter((row) => Boolean(row[selectedCol]?.trim()));
 
-    return { fields, cleanRows, emailKey };
+    setRows(cleanRows);
   }
 
   async function inspect(nextFile: File | null) {
@@ -246,16 +285,40 @@ export default function BulkPage() {
         return toast.error("Unsupported file type. Please use CSV, Excel (.xlsx/.xls), or JSON.");
       }
 
-      const { fields, cleanRows, emailKey } = normaliseRows(rawRows);
-
-      if (!emailKey) {
-        setRows([]);
-        setColumns(fields);
-        return toast.error('File must include an "email", "Email", "recipient", or "to" column');
+      if (rawRows.length === 0) {
+        return toast.error("The uploaded file contains no data rows.");
       }
+
+      // Gather unique fields
+      const allKeysSet = new Set<string>();
+      for (const r of rawRows) {
+        if (r && typeof r === "object") {
+          for (const k of Object.keys(r)) {
+            allKeysSet.add(k);
+          }
+        }
+      }
+      const fields = Array.from(allKeysSet);
+
+      if (fields.length === 0) {
+        return toast.error("No columns found in the uploaded file.");
+      }
+
       setColumns(fields);
-      setRows(cleanRows);
-      setStep(2);
+      setRawFileRows(rawRows);
+
+      const detectedKey = detectEmailKey(fields, rawRows);
+
+      if (detectedKey) {
+        applyEmailColumn(detectedKey, rawRows);
+        setStep(2);
+        toast.success(`Loaded ${rawRows.length} rows. Recipient email column auto-mapped to "${detectedKey}".`);
+      } else {
+        // Did not auto-detect email column: do not error out! Let user choose column in Step 1.
+        setEmailColumn("");
+        setStep1SelectedEmailCol(fields[0] || "");
+        toast.info(`Found ${fields.length} columns in file. Please select which column contains recipient emails.`);
+      }
     } catch (err: any) {
       toast.error(err.message || "Failed to parse file");
     } finally {
@@ -263,11 +326,21 @@ export default function BulkPage() {
     }
   }
 
+  const [samplePreviewRowIndex, setSamplePreviewRowIndex] = useState(0);
+
   const mappedSample = useMemo(() => {
-    const sampleRow = rows[0] || {};
+    const sampleRow = rows[samplePreviewRowIndex] || rows[0] || {};
     return Object.fromEntries(Object.entries(columnMap).map(([field, column]) => [field, sampleRow[column] || ""]));
-  }, [columnMap, rows]);
+  }, [columnMap, rows, samplePreviewRowIndex]);
   const previewHtml = fullTemplate ? replaceQrPlaceholdersForPreview(replaceTemplateValues(fullTemplate.bodyHtml, mappedSample)) : "";
+  const currentSampleRecipient = useMemo(() => {
+    const r = rows[samplePreviewRowIndex] || rows[0] || {};
+    return String(r[emailColumn] || "recipient@example.com");
+  }, [rows, samplePreviewRowIndex, emailColumn]);
+  const sampleSubject = useMemo(() => {
+    if (!fullTemplate) return "";
+    return replaceTemplateValues(fullTemplate.subjectLine || fullTemplate.subject || "(No Subject)", mappedSample);
+  }, [fullTemplate, mappedSample]);
   const qrFields = (fullTemplate?.mergeFields || []).filter((field: string) => /^qr_[a-z_]+$/.test(field));
   const textFields = (fullTemplate?.mergeFields || []).filter((field: string) => !/^qr_[a-z_]+$/.test(field));
   const qrFieldConfigs = useMemo(() => qrFields
@@ -317,38 +390,39 @@ export default function BulkPage() {
     return () => clearTimeout(timer);
   }, [previewHtml, step, fullTemplate]);
 
-  const duplicateEmailsSet = useMemo(() => {
+  const { duplicateEmailsSet, totalDuplicateCount } = useMemo(() => {
     const counts: Record<string, number> = {};
+    let duplicates = 0;
     rows.forEach((row) => {
       const email = String(row.email || "").toLowerCase().trim();
-      if (email) counts[email] = (counts[email] || 0) + 1;
+      if (email) {
+        counts[email] = (counts[email] || 0) + 1;
+        if (counts[email] > 1) duplicates++;
+      }
     });
-    return new Set(Object.keys(counts).filter((email) => counts[email] > 1));
+    return {
+      duplicateEmailsSet: new Set(Object.keys(counts).filter((email) => counts[email] > 1)),
+      totalDuplicateCount: duplicates
+    };
   }, [rows]);
 
-  function deduplicateKeepFirst() {
+  // Unique recipient rows (1 row per email address)
+  const uniqueRecipientRows = useMemo(() => {
     const seen = new Set<string>();
-    const nextRows = rows.filter((row) => {
+    return rows.filter((row) => {
       const email = String(row.email || "").toLowerCase().trim();
-      if (seen.has(email)) return false;
+      if (!email || seen.has(email)) return false;
       seen.add(email);
       return true;
     });
-    setRows(nextRows);
-    toast.success(`Removed duplicates (kept first). Remaining: ${nextRows.length}`);
-  }
+  }, [rows]);
 
-  function deduplicateKeepLast() {
-    const seen = new Set<string>();
-    const nextRows = [...rows].reverse().filter((row) => {
-      const email = String(row.email || "").toLowerCase().trim();
-      if (seen.has(email)) return false;
-      seen.add(email);
-      return true;
-    }).reverse();
-    setRows(nextRows);
-    toast.success(`Removed duplicates (kept last). Remaining: ${nextRows.length}`);
-  }
+  // Rows to dispatch based on Duplicate Mode (Option 1: Skip vs Option 2: Allow)
+  const effectiveRows = useMemo(() => {
+    return duplicateMode === "skip" ? uniqueRecipientRows : rows;
+  }, [duplicateMode, uniqueRecipientRows, rows]);
+
+  const effectiveRecipientCount = effectiveRows.length;
 
   async function runPreSendValidation() {
     if (!canSend || !fullTemplate) return toast.error("Complete all steps first");
@@ -413,7 +487,8 @@ export default function BulkPage() {
       const invalidDomainsSet = new Set(invalidMxDomains.map(d => d.toLowerCase()));
       const alreadySentSet = new Set(alreadySent.map(e => e.toLowerCase()));
       
-      // Calculate final count
+      // Calculate final count and deduplicated rows
+      const seenEmailsInValidation = new Set<string>();
       const finalSendRows = rows.filter((row) => {
         const email = String(row.email || "").toLowerCase().trim();
         if (!email) return false;
@@ -422,12 +497,14 @@ export default function BulkPage() {
         const domain = parts[parts.length - 1];
         if (invalidDomainsSet.has(domain)) return false;
         if (checkSentHistory && alreadySentSet.has(email)) return false;
+        if (seenEmailsInValidation.has(email)) return false;
+        seenEmailsInValidation.add(email);
         return true;
       });
       
       setValidationReport({
         totalRows: rows.length,
-        validCount: rows.length - invalidEmails.length - invalidMxDomains.length,
+        validCount: finalSendRows.length,
         invalidEmails,
         invalidMxDomains,
         duplicates: duplicatesList,
@@ -449,6 +526,7 @@ export default function BulkPage() {
     const invalidDomainsSet = new Set(validationReport.invalidMxDomains.map((d: string) => d.toLowerCase()));
     const alreadySentSet = new Set(validationReport.alreadySent.map((e: string) => e.toLowerCase()));
     
+    const seenEmails = new Set<string>();
     const validRows = rows.filter((row) => {
       const email = String(row.email || "").toLowerCase().trim();
       if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return false;
@@ -456,6 +534,10 @@ export default function BulkPage() {
       const domain = parts[parts.length - 1];
       if (invalidDomainsSet.has(domain)) return false;
       if (checkSentHistory && alreadySentSet.has(email)) return false;
+      if (duplicateMode === "skip") {
+        if (seenEmails.has(email)) return false;
+        seenEmails.add(email);
+      }
       return true;
     });
     
@@ -471,6 +553,7 @@ export default function BulkPage() {
     setRows(validRows);
     setFile(updatedFile);
     setReportOpen(false);
+    toast.success(`Validated ${validRows.length} recipients for dispatch`);
     
     setTimeout(() => {
       sendBulk(true);
@@ -478,11 +561,15 @@ export default function BulkPage() {
   }
 
   const unsentRows = useMemo(() => {
-    return rows.filter((r) => {
-      const email = String(r.email || "").toLowerCase().trim();
-      return email && !processedEmails.has(email);
-    });
-  }, [rows, processedEmails]);
+    if (duplicateMode === "skip") {
+      return effectiveRows.filter((r) => {
+        const email = String(r.email || "").toLowerCase().trim();
+        return email && !processedEmails.has(email);
+      });
+    } else {
+      return effectiveRows.filter((_, idx) => !processedIndices.has(idx));
+    }
+  }, [duplicateMode, effectiveRows, processedEmails, processedIndices]);
 
   async function sendBulk(sendAnyway = false, resumeOnly = false) {
     if (!canSend || !fullTemplate) return toast.error("Complete all steps before sending");
@@ -491,7 +578,8 @@ export default function BulkPage() {
       return;
     }
 
-    const targetRows = resumeOnly ? unsentRows : rows;
+    const initialTargetRows = effectiveRows;
+    const targetRows = resumeOnly ? unsentRows : initialTargetRows;
     if (targetRows.length === 0) {
       toast.info("All recipients in this list have already been sent or processed.");
       return;
@@ -507,6 +595,7 @@ export default function BulkPage() {
       setLogsCleared(false);
       setLogs([]);
       setProcessedEmails(new Set());
+      setProcessedIndices(new Set());
       bulkJobIdRef.current = crypto.randomUUID();
     } else if (!bulkJobIdRef.current) {
       bulkJobIdRef.current = crypto.randomUUID();
@@ -557,8 +646,9 @@ export default function BulkPage() {
         }
         form.set("delayMs", String(delayMs));
         form.set("bulkJobId", currentCampaignId);
-        form.set("skipAlreadySent", String(skipAlreadySent));
-        form.set("startIndex", String(resumeOnly ? (rows.length - targetRows.length + i * currentBatchSize) : i * currentBatchSize));
+        form.set("duplicateMode", duplicateMode);
+        form.set("skipAlreadySent", String(duplicateMode === "skip" && skipPastCampaigns));
+        form.set("startIndex", String(resumeOnly ? (initialTargetRows.length - targetRows.length + i * currentBatchSize) : i * currentBatchSize));
         form.set("isLastBatch", String(i === chunks.length - 1));
 
         try {
@@ -583,10 +673,13 @@ export default function BulkPage() {
               try {
                 const logObj = JSON.parse(line);
                 setLogs((current) => [logObj, ...current].slice(0, 500));
-                if (logObj.email) {
-                  const emailKey = String(logObj.email).toLowerCase().trim();
-                  if (logObj.type === "sent" || logObj.type === "skipped" || logObj.type === "failed") {
+                if (logObj.type === "sent" || logObj.type === "skipped") {
+                  if (logObj.email) {
+                    const emailKey = String(logObj.email).toLowerCase().trim();
                     setProcessedEmails((prev) => new Set([...prev, emailKey]));
+                  }
+                  if (typeof logObj.index === "number") {
+                    setProcessedIndices((prev) => new Set([...prev, logObj.index]));
                   }
                 }
               } catch {}
@@ -696,6 +789,9 @@ export default function BulkPage() {
     const nextRows = parsed.map((email) => ({ email }));
     setRows(nextRows);
     setColumns(["email"]);
+    setEmailColumn("email");
+    setStep1SelectedEmailCol("email");
+    setRawFileRows(nextRows);
     setColumnMap({});
     setFile(null);
     setStep(2);
@@ -877,12 +973,12 @@ export default function BulkPage() {
         <h1 className="text-2xl font-semibold tracking-normal">Bulk Send</h1>
         <p className="text-sm text-muted-foreground">CSV to saved HTML template mail merge, with editable field mapping and streaming progress.</p>
       </div>
-      <div className="grid gap-3 md:grid-cols-4">
-        {["Upload File", "Select Template", "Map Fields", "Preview & Send"].map((label, index) => (
-          <Card key={label} className={step === index + 1 ? "border-ring" : ""}>
-            <CardContent className="flex items-center gap-2 p-3 text-sm">
-              {step > index + 1 ? <Check className="h-4 w-4 text-sent" /> : <Badge variant={step === index + 1 ? "default" : "secondary"}>{index + 1}</Badge>}
-              {label}
+      <div className="grid gap-2.5 grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
+        {["1. Add Recipients", "2. Select Template", "3. Map Fields", "4. Device & Dark Preview", "5. Dispatch & Monitor"].map((label, index) => (
+          <Card key={label} className={step === index + 1 ? "border-ring shadow-xs bg-primary/5 border-primary/40" : ""}>
+            <CardContent className="flex items-center gap-2 p-2.5 text-xs font-medium">
+              {step > index + 1 ? <Check className="h-4 w-4 text-sent shrink-0" /> : <Badge variant={step === index + 1 ? "default" : "secondary"} className="text-[10px] px-1.5 py-0 h-4">{index + 1}</Badge>}
+              <span className="truncate">{label.slice(3)}</span>
             </CardContent>
           </Card>
         ))}
@@ -964,6 +1060,83 @@ export default function BulkPage() {
                   <div className="flex flex-col items-center gap-3 py-6">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
                     <p className="text-sm text-muted-foreground">Parsing file...</p>
+                  </div>
+                )}
+
+                {/* Email Column Selection in Step 1 if not auto-detected */}
+                {file && columns.length > 0 && !emailColumn && !parsingCsv && (
+                  <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3 mt-3">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <Mail className="h-4 w-4 text-primary" />
+                      Select Recipient Email Column
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      We found <span className="font-semibold text-foreground">{columns.length} columns</span> in <span className="font-semibold text-foreground">{file.name}</span>. Please choose the column that contains your recipients&apos; email addresses:
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-[1fr_auto] items-end pt-1">
+                      <div>
+                        <Label className="text-xs text-muted-foreground mb-1 block">Recipient Column</Label>
+                        <Select
+                          value={step1SelectedEmailCol}
+                          onValueChange={setStep1SelectedEmailCol}
+                        >
+                          <SelectTrigger className="w-full text-xs bg-background">
+                            <SelectValue placeholder="Choose email column..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {columns.map((col) => {
+                              const sample = String(rawFileRows[0]?.[col] ?? "").trim();
+                              return (
+                                <SelectItem key={col} value={col}>
+                                  <div className="flex items-center justify-between w-full gap-3">
+                                    <span className="font-medium">{col}</span>
+                                    {sample && (
+                                      <span className="text-muted-foreground font-mono text-[11px]">
+                                        (sample: {sample.length > 25 ? sample.slice(0, 25) + "..." : sample})
+                                      </span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              );
+                            })}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <Button
+                        type="button"
+                        disabled={!step1SelectedEmailCol}
+                        onClick={() => {
+                          applyEmailColumn(step1SelectedEmailCol);
+                          setStep(2);
+                          toast.success(`Recipient email column set to "${step1SelectedEmailCol}"`);
+                        }}
+                      >
+                        Continue to Templates
+                        <ArrowRight className="ml-1.5 h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Confirmation banner if file is loaded and emailColumn is active */}
+                {file && columns.length > 0 && emailColumn && !parsingCsv && (
+                  <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 rounded-lg border border-border bg-card p-3 text-xs mt-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-500 shrink-0" />
+                      <div className="min-w-0 truncate">
+                        <span className="font-medium text-foreground">File Ready: </span>
+                        <span className="text-muted-foreground">{rows.length} recipient rows. Sending to: </span>
+                        <code className="px-1.5 py-0.5 rounded bg-secondary font-mono font-semibold text-primary">{emailColumn}</code>
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setStep(2)}
+                      className="h-7 text-xs shrink-0"
+                    >
+                      Continue to Templates <ArrowRight className="ml-1 h-3 w-3" />
+                    </Button>
                   </div>
                 )}
               </>
@@ -1056,7 +1229,65 @@ export default function BulkPage() {
                 <div>This template uses {textFields.map((f: string) => `{{${f}}}`).join(", ")}. Because you pasted plain email addresses without other columns, merge fields will default to empty unless mapped.</div>
               </div>
             )}
-            {qrFields.length > 0 && <div className="rounded-md border bg-accent/20 p-3 text-sm"><div className="font-medium">This template contains QR placeholders</div><div className="text-muted-foreground">{qrFields.map((field: string) => `{{${field}}}`).join(", ")}</div></div>}
+            {/* Dedicated Recipient Email Column Selector */}
+            <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center text-primary shrink-0">
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-sm font-bold text-foreground">Recipient Email Column</h3>
+                      <Badge variant="outline" className="text-[10px] uppercase font-bold border-primary/30 text-primary bg-primary/10">
+                        Required for Sending
+                      </Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Each email in this campaign will be dispatched to the address found in this column.
+                    </p>
+                  </div>
+                </div>
+                {rows.length > 0 && (
+                  <Badge variant="secondary" className="text-xs font-mono shrink-0 self-start sm:self-auto">
+                    {rows.length} recipient{rows.length === 1 ? "" : "s"} ready
+                  </Badge>
+                )}
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-[220px_1fr] md:items-center pt-1">
+                <Label className="text-xs font-semibold text-foreground">Send Emails To</Label>
+                <Select
+                  value={emailColumn || ""}
+                  onValueChange={(value) => {
+                    applyEmailColumn(value);
+                    toast.success(`Recipient email column mapped to "${value}"`);
+                  }}
+                >
+                  <SelectTrigger className="text-xs bg-background">
+                    <SelectValue placeholder="Choose email column" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {columns.map((column) => {
+                      const sampleVal = String(rawFileRows[0]?.[column] ?? "").trim();
+                      return (
+                        <SelectItem key={column} value={column}>
+                          <div className="flex items-center justify-between gap-4 w-full">
+                            <span className="font-medium">{column}</span>
+                            {sampleVal && (
+                              <span className="text-muted-foreground font-mono text-[11px]">
+                                (sample: {sampleVal.length > 25 ? sampleVal.slice(0, 25) + "..." : sampleVal})
+                              </span>
+                            )}
+                          </div>
+                        </SelectItem>
+                      );
+                    })}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             <h3 className="font-medium">Text Merge Fields</h3>
             {textFields.map((field: string) => (
               <div key={field} className="grid gap-2 md:grid-cols-[220px_1fr] md:items-center">
@@ -1282,12 +1513,67 @@ export default function BulkPage() {
               )}
             </div>
 
-            <Button onClick={() => setStep(4)}>Continue to Preview</Button>
+            <Button onClick={() => setStep(4)} className="gap-1.5 font-semibold">
+              Continue to Device &amp; Dark Preview
+              <ArrowRight className="h-4 w-4" />
+            </Button>
           </CardContent>
         </Card>
       )}
 
       {step === 4 && fullTemplate && (
+        <Card className="border-border">
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Smartphone className="h-5 w-5 text-primary" />
+                Pre-Flight Device &amp; Dark Mode Preview
+              </CardTitle>
+              <CardDescription>
+                Inspect your template and merge tags across Desktop, iPhone mobile viewports, simulated Dark Mode, and Lock Screen notifications.
+              </CardDescription>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <Button variant="outline" size="sm" onClick={() => setStep(3)}>
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                Back to Mapping
+              </Button>
+              <Button size="sm" onClick={() => setStep(5)} className="gap-1.5 font-semibold">
+                Proceed to Dispatch
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <EmailDevicePreview
+              html={previewHtml}
+              subject={sampleSubject}
+              fromName="Campaign Sender"
+              fromEmail="campaign@example.com"
+              toAddresses={[currentSampleRecipient]}
+              sampleRows={rows}
+              currentSampleIndex={samplePreviewRowIndex}
+              onSampleIndexChange={setSamplePreviewRowIndex}
+              initialDevice="mobile"
+              initialTheme="light"
+              showPreflight={true}
+            />
+
+            <div className="flex items-center justify-between pt-3 border-t border-border/60">
+              <Button variant="outline" size="sm" onClick={() => setStep(3)}>
+                <ArrowLeft className="mr-1.5 h-3.5 w-3.5" />
+                Back to Field Mapping
+              </Button>
+              <Button size="sm" onClick={() => setStep(5)} className="gap-1.5 font-semibold">
+                <span>Continue to Dispatch &amp; Live Monitor</span>
+                <ArrowRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {step === 5 && fullTemplate && (
         <div className="space-y-6">
           {/* Top Panel: Live Status & Progress Bar */}
           {(sending || hasRun) && (
@@ -1333,7 +1619,7 @@ export default function BulkPage() {
                               <Clock className="h-3.5 w-3.5 animate-spin" />
                               <span>Elapsed: <strong>{etaInfo.elapsedText}</strong></span>
                             </Badge>
-                            <Badge variant="outline" className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 font-mono flex items-center gap-1.5 py-1 px-2.5">
+                            <Badge variant="outline" className="bg-zinc-800/80 text-zinc-200 border-zinc-700 font-mono flex items-center gap-1.5 py-1 px-2.5">
                               <Timer className="h-3.5 w-3.5" />
                               <span>ETA: <strong>{etaInfo.etaText}</strong></span>
                             </Badge>
@@ -1474,84 +1760,139 @@ export default function BulkPage() {
             </Card>
           )}
 
-          <div className="grid gap-5 xl:grid-cols-[1fr_380px]">
+          <div className="grid gap-5 xl:grid-cols-[1fr_380px] xl:items-stretch">
             {/* Left Column: Preview */}
-            <div className="space-y-5">
-              <Card>
-                <CardHeader>
-                  <CardTitle>Template & Merge Preview</CardTitle>
-                  <CardDescription>
-                    {replaceTemplateValues(fullTemplate.subjectLine || fullTemplate.subject || "", mappedSample)}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {previewLoading ? (
-                    <div className="flex h-[500px] items-center justify-center rounded-md border bg-muted">
-                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <div className="relative min-h-0 xl:h-full">
+              <div className="flex flex-col gap-5 min-h-0 xl:absolute xl:inset-0">
+                <Card className="flex flex-col flex-1 h-full min-h-0 overflow-hidden">
+                  <CardHeader className="flex flex-row items-center justify-between pb-2 shrink-0">
+                    <div>
+                      <CardTitle className="text-base">Campaign Launch Configuration</CardTitle>
+                      <CardDescription>
+                        {fullTemplate.name} &bull; {validRecipients} recipients selected
+                      </CardDescription>
                     </div>
-                  ) : (
-                    <iframe title="Bulk preview" sandbox="" srcDoc={previewHtml} className="h-[500px] w-full rounded-md border bg-background" />
-                  )}
-                </CardContent>
-              </Card>
-
-              {/* Detailed Failure Report Panel */}
-              {!logsCleared && stats.failureDetails.length > 0 && (
-                <Card className="border-destructive/30 bg-destructive/5">
-                  <CardHeader>
-                    <CardTitle className="text-destructive flex items-center gap-2">
-                      <AlertTriangle className="h-5 w-5 animate-pulse" />
-                      Detailed Failure Breakdown ({stats.failureDetails.length})
-                    </CardTitle>
-                    <CardDescription>
-                      Check the exact reason why these emails failed to deliver or why assets could not generate.
-                    </CardDescription>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setStep(4)}
+                      className="text-xs gap-1.5"
+                    >
+                      <Smartphone className="h-3.5 w-3.5 text-primary" />
+                      Inspect on Mobile &amp; Dark Mode
+                    </Button>
                   </CardHeader>
-                  <CardContent>
-                    <div className="max-h-80 overflow-y-auto rounded-md border border-destructive/20 bg-background divide-y divide-border">
-                      {stats.failureDetails.map((failure, idx) => (
-                        <div key={idx} className="flex flex-col gap-2 p-3 text-sm hover:bg-muted/10 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="space-y-1">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-semibold text-foreground">{failure.email}</span>
-                              <Badge variant="failed" className="text-[10px] px-1.5 py-0 uppercase">
-                                {failure.type}
-                              </Badge>
-                            </div>
-                            {failure.bothFailed ? (
-                              <div className="mt-1 space-y-1.5 font-sans">
-                                <div className="text-[10px] font-semibold uppercase text-zinc-500 tracking-wider">Dual SMTP Connection Failures</div>
-                                <div className="grid gap-2 sm:grid-cols-2">
-                                  <div className="rounded border border-red-500/10 bg-red-500/5 p-2 text-xs">
-                                    <div className="font-semibold text-red-500 mb-0.5">Primary SMTP Error:</div>
-                                    <span className="font-mono leading-relaxed text-destructive break-all">{failure.primaryError}</span>
-                                  </div>
-                                  <div className="rounded border border-orange-500/10 bg-orange-500/5 p-2 text-xs">
-                                    <div className="font-semibold text-orange-500 mb-0.5">Fallback SMTP Error:</div>
-                                    <span className="font-mono leading-relaxed text-orange-600 dark:text-orange-400 break-all">{failure.fallbackError}</span>
-                                  </div>
-                                </div>
-                              </div>
-                            ) : (
-                              <p className="text-xs font-mono text-destructive bg-destructive/5 border border-destructive/10 rounded px-2 py-1 leading-relaxed break-all">
-                                {failure.reason}
-                              </p>
-                            )}
-                          </div>
+                  <CardContent className="flex flex-col flex-1 min-h-0 space-y-3 pt-2">
+                    <div className="rounded-lg border bg-muted/20 p-3 space-y-2 text-xs shrink-0">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Subject Line:</span>
+                        <span className="font-semibold text-foreground truncate max-w-[280px]">
+                          {sampleSubject}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Recipient Email Column:</span>
+                        <code className="rounded bg-background px-1.5 py-0.5 font-mono text-primary font-semibold">
+                          {emailColumn}
+                        </code>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Mapped Variables:</span>
+                        <span className="font-medium text-foreground">
+                          {Object.keys(columnMap).length} column{Object.keys(columnMap).length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      {attachCertificate && (
+                        <div className="flex justify-between items-center text-primary font-medium">
+                          <span>Personalized Certificate:</span>
+                          <span>{selectedCertificate?.name} (PDF Attached)</span>
                         </div>
-                      ))}
+                      )}
+                      {attachLetters && (
+                        <div className="flex justify-between items-center text-primary font-medium">
+                          <span>Personalized Letter:</span>
+                          <span>{letterMode}</span>
+                        </div>
+                      )}
                     </div>
+
+                    <div
+                      className="flex-1 min-h-[200px] max-h-[500px] xl:max-h-none rounded-md border bg-background p-3 text-xs overflow-y-auto leading-relaxed"
+                      dangerouslySetInnerHTML={{ __html: previewHtml }}
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setStep(4)}
+                      className="w-full text-xs gap-1.5 shrink-0"
+                    >
+                      <Smartphone className="h-3.5 w-3.5 text-primary" />
+                      Back to Device &amp; Dark Mode Preview
+                    </Button>
                   </CardContent>
                 </Card>
-              )}
+
+                {/* Detailed Failure Report Panel */}
+                {!logsCleared && stats.failureDetails.length > 0 && (
+                  <Card className="border-destructive/30 bg-destructive/5 shrink-0 max-h-60 overflow-hidden flex flex-col">
+                    <CardHeader className="py-2.5 px-3 shrink-0">
+                      <CardTitle className="text-destructive flex items-center gap-2 text-xs">
+                        <AlertTriangle className="h-4 w-4 animate-pulse" />
+                        Detailed Failure Breakdown ({stats.failureDetails.length})
+                      </CardTitle>
+                      <CardDescription className="text-[11px]">
+                        Check the exact reason why these emails failed to deliver or why assets could not generate.
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="p-2 pt-0 flex-1 min-h-0 overflow-y-auto">
+                      <div className="rounded-md border border-destructive/20 bg-background divide-y divide-border">
+                        {stats.failureDetails.map((failure, idx) => (
+                          <div key={idx} className="flex flex-col gap-2 p-3 text-sm hover:bg-muted/10 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="font-semibold text-foreground">{failure.email}</span>
+                                <Badge variant="failed" className="text-[10px] px-1.5 py-0 uppercase">
+                                  {failure.type}
+                                </Badge>
+                              </div>
+                              {failure.bothFailed ? (
+                                <div className="mt-1 space-y-1.5 font-sans">
+                                  <div className="text-[10px] font-semibold uppercase text-zinc-500 tracking-wider">Dual SMTP Connection Failures</div>
+                                  <div className="grid gap-2 sm:grid-cols-2">
+                                    <div className="rounded border border-red-500/10 bg-red-500/5 p-2 text-xs">
+                                      <div className="font-semibold text-red-500 mb-0.5">Primary SMTP Error:</div>
+                                      <span className="font-mono leading-relaxed text-destructive break-all">{failure.primaryError}</span>
+                                    </div>
+                                    <div className="rounded border border-orange-500/10 bg-orange-500/5 p-2 text-xs">
+                                      <div className="font-semibold text-orange-500 mb-0.5">Fallback SMTP Error:</div>
+                                      <span className="font-mono leading-relaxed text-orange-600 dark:text-orange-400 break-all">{failure.fallbackError}</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
+                                <p className="text-xs font-mono text-destructive bg-destructive/5 border border-destructive/10 rounded px-2 py-1 leading-relaxed break-all">
+                                  {failure.reason}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </div>
             </div>
 
             {/* Right Column: Controls and Live Progress */}
             <div className="space-y-5">
               <Card>
-                <CardHeader>
-                  <CardTitle>Send Controls</CardTitle>
-                  <CardDescription>Configure batching, anti-duplicate protection, and dispatch.</CardDescription>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-base">Send Controls</CardTitle>
+                  <CardDescription className="text-xs">Configure recipient deduplication and dispatch settings.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {selectedCertificate && (
@@ -1564,61 +1905,148 @@ export default function BulkPage() {
                     </div>
                   )}
 
-                  {/* Batch size and Delay settings */}
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="batchSize">Batch size</Label>
-                      <Input
-                        id="batchSize"
-                        type="number"
-                        min={5}
-                        max={100}
-                        value={batchSize}
-                        disabled={sending}
-                        onChange={(event) => setBatchSize(Number(event.target.value))}
-                      />
-                      <p className="text-[10px] text-muted-foreground">Emails per request (prevents 300s timeout).</p>
-                    </div>
+                  {/* Duplicate Handling Selector: Two Clear Options */}
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Copy className="h-3.5 w-3.5 text-primary" />
+                      Duplicate Handling
+                    </Label>
+                    <div className="grid grid-cols-1 gap-2">
+                      {/* Option 1: Skip duplicates */}
+                      <div
+                        onClick={() => !sending && setDuplicateMode("skip")}
+                        className={`relative flex flex-col p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                          duplicateMode === "skip"
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                            : "border-border bg-card hover:bg-muted/40"
+                        } ${sending ? "opacity-60 cursor-not-allowed" : ""}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="duplicateMode"
+                              checked={duplicateMode === "skip"}
+                              onChange={() => setDuplicateMode("skip")}
+                              disabled={sending}
+                              className="h-4 w-4 accent-primary cursor-pointer"
+                            />
+                            <span className="font-semibold text-xs text-foreground">Skip duplicates</span>
+                          </label>
+                          <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-primary/10 text-primary border-primary/20">
+                            Recommended
+                          </Badge>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1 ml-6 leading-relaxed">
+                          Only 1 email sent per recipient address. Extra duplicate rows in the file are skipped.
+                        </p>
+                        {duplicateMode === "skip" && (
+                          <div className="mt-2.5 ml-6 pt-2 border-t border-border/60">
+                            <label className="flex items-center gap-2 text-[11px] text-muted-foreground cursor-pointer hover:text-foreground">
+                              <input
+                                type="checkbox"
+                                checked={skipPastCampaigns}
+                                onChange={(e) => setSkipPastCampaigns(e.target.checked)}
+                                disabled={sending}
+                                className="h-3.5 w-3.5 rounded border-gray-300 accent-primary cursor-pointer"
+                              />
+                              <span>Also skip recipients who received this template in past campaigns</span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="delay">Delay (ms)</Label>
-                      <Input
-                        id="delay"
-                        type="number"
-                        min={0}
-                        value={delayMs}
-                        disabled={sending}
-                        onChange={(event) => setDelayMs(Number(event.target.value))}
-                      />
-                      <p className="text-[10px] text-muted-foreground">Delay between emails.</p>
+                      {/* Option 2: Send with duplicates */}
+                      <div
+                        onClick={() => !sending && setDuplicateMode("allow")}
+                        className={`relative flex flex-col p-3 rounded-lg border text-left cursor-pointer transition-all ${
+                          duplicateMode === "allow"
+                            ? "border-primary bg-primary/5 ring-1 ring-primary/30"
+                            : "border-border bg-card hover:bg-muted/40"
+                        } ${sending ? "opacity-60 cursor-not-allowed" : ""}`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input
+                              type="radio"
+                              name="duplicateMode"
+                              checked={duplicateMode === "allow"}
+                              onChange={() => setDuplicateMode("allow")}
+                              disabled={sending}
+                              className="h-4 w-4 accent-primary cursor-pointer"
+                            />
+                            <span className="font-semibold text-xs text-foreground">Send with duplicates</span>
+                          </label>
+                          <span className="text-[10px] text-muted-foreground">(Repetitions allowed)</span>
+                        </div>
+                        <p className="text-[11px] text-muted-foreground mt-1 ml-6 leading-relaxed">
+                          Sends every row in the file as-is, allowing multiple emails to the same address if repeated.
+                        </p>
+                      </div>
                     </div>
                   </div>
 
-                  {/* Anti Duplicate Toggle */}
-                  <div className="flex items-center justify-between rounded-md border bg-muted/20 p-2.5 text-xs">
-                    <div className="space-y-0.5 pr-2">
-                      <Label htmlFor="antiDuplicate" className="font-semibold flex items-center gap-1.5 cursor-pointer">
-                        <ShieldCheck className="h-3.5 w-3.5 text-green-500" />
-                        Skip Already Sent
-                      </Label>
-                      <p className="text-[10px] text-muted-foreground">
-                        Never re-sends emails to applicants who already received this template.
-                      </p>
-                    </div>
-                    <input
-                      id="antiDuplicate"
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 accent-primary cursor-pointer"
-                      checked={skipAlreadySent}
-                      disabled={sending}
-                      onChange={(e) => setSkipAlreadySent(e.target.checked)}
-                    />
-                  </div>
+                  {/* Advanced Delivery Settings (Collapsible) */}
+                  <details className="group rounded-lg border bg-muted/20 text-xs">
+                    <summary className="flex items-center justify-between p-2.5 cursor-pointer font-medium select-none text-muted-foreground hover:text-foreground">
+                      <span className="flex items-center gap-1.5">
+                        <Settings2 className="h-3.5 w-3.5" />
+                        Advanced Delivery Settings
+                      </span>
+                      <span className="text-[10px] text-muted-foreground font-mono">
+                        Batch: {batchSize} • Delay: {delayMs}ms
+                      </span>
+                    </summary>
+                    <div className="p-3 pt-1 border-t border-border/50 grid grid-cols-2 gap-3 mt-1.5">
+                      <div className="space-y-1">
+                        <Label htmlFor="batchSize" className="text-[11px]">Batch size</Label>
+                        <Input
+                          id="batchSize"
+                          type="number"
+                          min={5}
+                          max={100}
+                          value={batchSize}
+                          disabled={sending}
+                          onChange={(event) => setBatchSize(Number(event.target.value))}
+                          className="h-8 text-xs"
+                        />
+                        <p className="text-[9px] text-muted-foreground">Emails per request chunk (prevents timeout).</p>
+                      </div>
 
-                  <div className="flex flex-col gap-2">
+                      <div className="space-y-1">
+                        <Label htmlFor="delay" className="text-[11px]">Delay (ms)</Label>
+                        <Input
+                          id="delay"
+                          type="number"
+                          min={0}
+                          value={delayMs}
+                          disabled={sending}
+                          onChange={(event) => setDelayMs(Number(event.target.value))}
+                          className="h-8 text-xs"
+                        />
+                        <p className="text-[9px] text-muted-foreground">Delay between sent emails.</p>
+                      </div>
+                    </div>
+                  </details>
+
+                  {/* Dispatch Action Area */}
+                  <div className="flex flex-col gap-2 pt-1">
+                    {/* Stop Button (Active Sending) */}
+                    {sending && (
+                      <Button
+                        variant="destructive"
+                        className="w-full font-semibold shadow-sm"
+                        onClick={stopSending}
+                      >
+                        <Square className="mr-2 h-4 w-4 fill-current" />
+                        Stop Campaign Dispatch
+                      </Button>
+                    )}
+
+                    {/* Resume Remaining Button (Interrupted Run) */}
                     {hasRun && unsentRows.length > 0 && !sending && (
                       <Button
-                        className="w-full bg-green-600 hover:bg-green-700 text-white font-medium"
+                        className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold shadow-sm"
                         onClick={() => sendBulk(true, true)}
                       >
                         <Play className="mr-2 h-4 w-4" />
@@ -1626,55 +2054,53 @@ export default function BulkPage() {
                       </Button>
                     )}
 
-                    <Button className="w-full" disabled={!canSend || sending || validationLoading} onClick={runPreSendValidation}>
-                      {validationLoading ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Validating CSV...
-                        </>
-                      ) : (
-                        <>
-                          <Play className="mr-2 h-4 w-4" />
-                          Verify & Send ({validRecipients})
-                        </>
-                      )}
-                    </Button>
+                    {/* Primary Send Button */}
+                    {!sending && (
+                      <Button
+                        className="w-full text-sm font-semibold shadow-sm"
+                        disabled={!canSend || sending || validationLoading}
+                        onClick={() => sendBulk(false, false)}
+                      >
+                        <Play className="mr-2 h-4 w-4" />
+                        Send Campaign ({effectiveRecipientCount} {effectiveRecipientCount === 1 ? "recipient" : "recipients"})
+                      </Button>
+                    )}
 
-                    <Button variant="outline" className="w-full border-primary/30 hover:bg-primary/5 text-primary" disabled={!canSend || sending} onClick={() => sendBulk(true, false)}>
-                      {sending ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Sending Campaign in Batches...
-                        </>
-                      ) : (
-                        <>
-                          <Play className="mr-2 h-4 w-4" />
-                          Send Direct (Skip Pre-Check)
-                        </>
-                      )}
-                    </Button>
+                    {/* Active Sending Feedback */}
+                    {sending && (
+                      <div className="flex items-center justify-center gap-2 p-2.5 rounded-md bg-primary/10 border border-primary/20 text-primary text-xs font-semibold">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>
+                          Dispatching campaign... {currentBatchInfo ? `Batch ${currentBatchInfo.current} of ${currentBatchInfo.total}` : ""}
+                        </span>
+                      </div>
+                    )}
 
-                    {/* Test Mail Send */}
-                    <div className="relative my-1">
-                      <div className="absolute inset-0 flex items-center">
-                        <span className="w-full border-t border-border" />
-                      </div>
-                      <div className="relative flex justify-center">
-                        <span className="bg-card px-2 text-[10px] text-muted-foreground uppercase tracking-wider">or</span>
-                      </div>
+                    {/* Secondary Actions: Pre-flight Check & Test Email */}
+                    <div className="flex items-center justify-between px-1 pt-1 text-[11px]">
+                      <button
+                        type="button"
+                        disabled={!canSend || sending || validationLoading}
+                        onClick={runPreSendValidation}
+                        className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <ShieldCheck className="h-3.5 w-3.5 text-primary/70" />
+                        Pre-flight Health Check
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!fullTemplate || sending}
+                        onClick={() => setTestMailOpen(true)}
+                        className="text-muted-foreground hover:text-primary transition-colors flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                      >
+                        <FlaskConical className="h-3.5 w-3.5 text-primary/70" />
+                        Send Test Email
+                      </button>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="w-full text-xs border-dashed"
-                      disabled={!fullTemplate || sending}
-                      onClick={() => setTestMailOpen(true)}
-                    >
-                      <FlaskConical className="mr-2 h-3.5 w-3.5 text-primary" />
-                      Send Test Email
-                    </Button>
 
+                    {/* Export Unsent CSV */}
                     {hasRun && unsentRows.length > 0 && (
-                      <Button variant="ghost" size="sm" className="w-full text-xs text-muted-foreground" onClick={exportUnsentCsv}>
+                      <Button variant="outline" size="sm" className="w-full text-xs text-muted-foreground mt-1" onClick={exportUnsentCsv}>
                         <Download className="mr-1.5 h-3.5 w-3.5" />
                         Export Unsent CSV ({unsentRows.length})
                       </Button>
@@ -1720,7 +2146,7 @@ export default function BulkPage() {
                                       ? "bg-yellow-500/10 text-yellow-400 border border-yellow-500/20"
                                       : log.type === "sent" 
                                         ? "bg-green-500/10 text-green-400 border border-green-500/20" 
-                                        : "bg-blue-500/10 text-blue-400 border border-blue-500/20"
+                                        : "bg-zinc-800/80 text-zinc-300 border border-zinc-700"
                               }`}>
                                 {isBothFailed ? "❌❌ Both Failed" : isSkipped ? "⏭️ Skipped (Sent)" : log.type}
                               </span>
@@ -1756,19 +2182,29 @@ export default function BulkPage() {
         <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 pb-3">
           <div>
             <CardTitle>Recipients Preview</CardTitle>
-            <CardDescription>Preview of parsed data ({file?.name ?? "pasted emails"}). Highlighted rows represent duplicate emails.</CardDescription>
+            <CardDescription>
+              Preview of parsed data ({file?.name ?? "pasted emails"}). Sending to column: <span className="font-semibold text-foreground">{emailColumn || "email"}</span> ({rows.length} total recipients). Highlighted rows represent duplicate emails.
+            </CardDescription>
           </div>
-          {duplicateEmailsSet.size > 0 && (
+          {totalDuplicateCount > 0 && (
             <div className="flex items-center gap-2">
-              <Badge className="bg-yellow-500/10 text-yellow-500 hover:bg-yellow-500/10 border-yellow-500/20">
-                {duplicateEmailsSet.size} duplicates
+              <Badge className={`text-xs px-2.5 py-1 font-medium ${
+                duplicateMode === "skip"
+                  ? "bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20"
+                  : "bg-zinc-800/80 text-zinc-300 border-zinc-700"
+              }`}>
+                {duplicateMode === "skip" ? (
+                  <>
+                    <ShieldCheck className="inline-block mr-1 h-3.5 w-3.5" />
+                    Skip duplicates active: {totalDuplicateCount} duplicate {totalDuplicateCount > 1 ? "rows" : "row"} will be skipped ({uniqueRecipientRows.length} unique)
+                  </>
+                ) : (
+                  <>
+                    <Copy className="inline-block mr-1 h-3.5 w-3.5" />
+                    Repetitions allowed: all {rows.length} rows will be dispatched
+                  </>
+                )}
               </Badge>
-              <Button variant="outline" size="sm" onClick={deduplicateKeepFirst}>
-                Keep First
-              </Button>
-              <Button variant="outline" size="sm" onClick={deduplicateKeepLast}>
-                Keep Last
-              </Button>
             </div>
           )}
         </CardHeader>
@@ -1782,7 +2218,18 @@ export default function BulkPage() {
             <Table>
               <TableHeader>
                 <TableRow>
-                  {columns.map((key) => <TableHead key={key}>{key}</TableHead>)}
+                  {columns.map((key) => (
+                    <TableHead key={key}>
+                      <div className="flex items-center gap-1.5">
+                        <span>{key}</span>
+                        {key === emailColumn && (
+                          <Badge variant="outline" className="text-[9px] uppercase px-1 py-0 bg-primary/10 text-primary border-primary/30">
+                            Recipient
+                          </Badge>
+                        )}
+                      </div>
+                    </TableHead>
+                  ))}
                 </TableRow>
               </TableHeader>
               <TableBody>
