@@ -64,6 +64,19 @@ export async function POST(req: NextRequest) {
       const sentToday = await prisma.email.count({ where: { userId: String(user._id), status: "sent", sentAt: { gte: today } } });
       if (sentToday >= user.dailyLimit) return jsonError(`Daily sending limit reached (${user.dailyLimit})`, 429, "DAILY_LIMIT_REACHED");
     }
+
+    // 5-second idempotency check to prevent rapid double-clicks or duplicate requests
+    const recentDuplicate = await prisma.email.findFirst({
+      where: {
+        userId: String(user._id),
+        subject: payload.subject,
+        toAddresses: toJson(payload.to)!,
+        sentAt: { gte: new Date(Date.now() - 5000) }
+      }
+    });
+    if (recentDuplicate) {
+      return jsonError("Duplicate email send detected. Please wait a few seconds before resending.", 429, "DUPLICATE_SEND_DETECTED");
+    }
     const email = await prisma.email.create({
       data: {
         userId: String(user._id),

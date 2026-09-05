@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Copy, Eye, FileCode, Loader2, Pencil, Plus, Search, Star, Trash2, Upload } from "lucide-react";
+import { Copy, Eye, FileCode, Layers, Loader2, Pencil, Plus, Search, Star, Trash2, Upload } from "lucide-react";
 import { usePullToRefresh } from "@/hooks/use-pull-to-refresh";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
 import { formatInvalidImagesMessage, validateExternalImageUrls } from "@/lib/template-html";
 import { generateTemplateThumbnail, replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER, validateHtmlTemplateClient } from "@/lib/template-client";
+import { EmailDevicePreview } from "@/components/email-device-preview";
 
 type TemplateListItem = {
   _id: string;
@@ -247,6 +248,26 @@ export default function TemplatesPage() {
               </div>
             </div>
           ))
+        ) : visibleTemplates.length === 0 ? (
+          <div className="col-span-full rounded-xl border border-border bg-card p-12 text-center flex flex-col items-center justify-center space-y-4">
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-secondary border border-border shadow-xs">
+              <Layers className="h-8 w-8 text-primary/80" />
+            </div>
+            <div className="space-y-1 max-w-sm">
+              <h3 className="text-sm font-bold text-foreground">No email templates found</h3>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                Create your first reusable HTML email template or import an existing layout.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-1">
+              <Button size="sm" onClick={() => setPasteOpen(true)} className="bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-xs shadow-xs">
+                <Plus className="h-3.5 w-3.5 mr-1" /> New Template
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setUploadOpen(true)} className="border-border text-xs">
+                <Upload className="h-3.5 w-3.5 mr-1" /> Upload HTML
+              </Button>
+            </div>
+          </div>
         ) : (
           visibleTemplates.map((template) => (
             <Card key={template._id} className="overflow-hidden">
@@ -349,13 +370,15 @@ export default function TemplatesPage() {
               <div className="flex items-center justify-between gap-2 py-4">
                 <TabsList><TabsTrigger value="preview">Rendered Preview</TabsTrigger><TabsTrigger value="fields">Merge Fields</TabsTrigger></TabsList>
               </div>
-              <TabsContent value="preview" className="min-h-0 overflow-hidden rounded-md border bg-muted p-0">
-                <iframe
-                  title="Template preview"
-                  sandbox=""
-                  srcDoc={renderedPreview}
-                  className="h-full rounded-none border-0 bg-background"
-                  style={{ width: device === "desktop" ? "100%" : 375, marginInline: device === "desktop" ? 0 : "auto", display: "block" }}
+              <TabsContent value="preview" className="min-h-0 overflow-auto p-2">
+                <EmailDevicePreview
+                  html={renderedPreview}
+                  subject={previewTemplate?.subjectLine || previewTemplate?.subject || previewTemplate?.name}
+                  fromName="Template Studio"
+                  fromEmail="templates@example.com"
+                  initialDevice="desktop"
+                  initialTheme="light"
+                  showPreflight={true}
                 />
               </TabsContent>
               <TabsContent value="fields" className="min-h-0 overflow-auto">

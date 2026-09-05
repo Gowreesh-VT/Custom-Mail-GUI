@@ -22,6 +22,14 @@ const schema = z.object({
 
 export async function GET(req: NextRequest) {
   const { user } = await requireUser(req);
+  const id = req.nextUrl.searchParams.get("id");
+  if (id) {
+    const draft = await prisma.draft.findFirst({
+      where: { id, userId: String(user._id) }
+    });
+    if (!draft) return jsonError("Draft not found", 404);
+    return Response.json({ success: true, draft: draftRecord(draft) });
+  }
   const drafts = await prisma.draft.findMany({ where: { userId: String(user._id) }, orderBy: { updatedAt: "desc" }, take: 100 });
   return Response.json({ success: true, drafts: drafts.map(draftRecord) });
 }
