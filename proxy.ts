@@ -34,6 +34,14 @@ async function verifyAccessToken(token: string) {
 
 export async function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  const token = req.cookies.get("accessToken")?.value;
+  const payload = token ? await verifyAccessToken(token) : null;
+
+  if (payload && (pathname === "/login" || pathname === "/signup")) {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
@@ -45,18 +53,14 @@ export async function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const token = req.cookies.get("accessToken")?.value;
-  if (token) {
-    const payload = await verifyAccessToken(token);
-    if (payload) {
-      if (pathname.startsWith("/admin") && payload.role !== "admin") {
-        return NextResponse.redirect(new URL("/compose", req.url));
-      }
-      if (payload.forcePasswordReset && !pathname.startsWith("/settings") && !pathname.startsWith("/api/auth") && !pathname.startsWith("/api/")) {
-        return NextResponse.redirect(new URL("/settings", req.url));
-      }
-      return NextResponse.next();
+  if (payload) {
+    if (pathname.startsWith("/admin") && payload.role !== "admin") {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
     }
+    if (payload.forcePasswordReset && !pathname.startsWith("/settings") && !pathname.startsWith("/api/auth") && !pathname.startsWith("/api/")) {
+      return NextResponse.redirect(new URL("/settings", req.url));
+    }
+    return NextResponse.next();
   }
 
   if (pathname.startsWith("/api/")) {

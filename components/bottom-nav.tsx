@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { 
-  Award, BarChart3, Clock, FileText, Layers, LogOut, 
+  Award, BarChart3, Clock, FileText, Layers, LayoutDashboard, LogOut, 
   Mail, Menu, PenLine, QrCode, Send, Settings, Shield 
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -33,23 +33,23 @@ export function BottomNav() {
   }
 
   const primaryTabs = [
+    { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
     { href: "/compose", label: "Compose", icon: PenLine },
     { href: "/sent", label: "Sent", icon: Send },
-    { href: "/drafts", label: "Drafts", icon: FileText },
     { href: "/templates", label: "Templates", icon: Layers }
   ];
 
   const moreTabs = [
+    { href: "/drafts", label: "Drafts", icon: FileText },
     { href: "/monitor", label: "Monitor", icon: BarChart3 },
-    { href: "/qr", label: "QR Codes", icon: QrCode },
-    { href: "/certificates", label: "Certificates", icon: Award },
+    { href: "/qr", label: "QR & Certs", icon: QrCode },
     { href: "/scheduled", label: "Scheduled", icon: Clock },
     { href: "/bulk", label: "Bulk", icon: Mail },
     { href: "/settings", label: "Settings", icon: Settings }
   ];
 
   return (
-    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-zinc-950/90 border-t border-zinc-850 backdrop-blur-md bottom-nav">
+    <div className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/90 border-t border-border backdrop-blur-md bottom-nav">
       <div className="flex h-16 items-center justify-around px-2">
         {primaryTabs.map((item) => {
           const active = pathname === item.href;
@@ -59,7 +59,7 @@ export function BottomNav() {
               href={item.href}
               className={cn(
                 "flex flex-col items-center justify-center flex-1 h-full py-1 text-[10px] font-semibold transition-colors",
-                active ? "text-primary" : "text-zinc-500 hover:text-zinc-300"
+                active ? "text-primary font-bold" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <item.icon className={cn("h-5 w-5 mb-0.5", active ? "stroke-[2.5]" : "stroke-2")} />
@@ -74,21 +74,21 @@ export function BottomNav() {
             <button
               className={cn(
                 "flex flex-col items-center justify-center flex-1 h-full py-1 text-[10px] font-semibold transition-colors",
-                moreTabs.some((t) => pathname === t.href) ? "text-primary" : "text-zinc-500 hover:text-zinc-300"
+                moreTabs.some((t) => pathname === t.href || (t.href === "/qr" && pathname.startsWith("/certificates"))) ? "text-primary font-bold" : "text-muted-foreground hover:text-foreground"
               )}
             >
               <Menu className="h-5 w-5 mb-0.5" />
               More
             </button>
           </SheetTrigger>
-          <SheetContent side="bottom" className="h-[80vh] bg-zinc-950 border-t border-zinc-800 text-white rounded-t-2xl p-6">
+          <SheetContent side="bottom" className="h-[80vh] bg-card border-t border-border text-foreground rounded-t-xl p-6">
             <SheetHeader className="text-left">
-              <SheetTitle className="text-zinc-100 text-lg font-bold">More Navigation</SheetTitle>
+              <SheetTitle className="text-foreground text-base font-bold">More Navigation</SheetTitle>
             </SheetHeader>
             <div className="mt-6 flex flex-col h-[calc(100%-3rem)] justify-between">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-2.5">
                 {moreTabs.map((item) => {
-                  const active = pathname === item.href;
+                  const active = pathname === item.href || (item.href === "/qr" && (pathname === "/certificates" || pathname.startsWith("/certificates/")));
                   return (
                     <Button
                       key={item.href}
@@ -96,12 +96,12 @@ export function BottomNav() {
                       variant={active ? "secondary" : "outline"}
                       onClick={() => setIsOpen(false)}
                       className={cn(
-                        "justify-start h-12 border-zinc-800",
-                        active ? "bg-zinc-800 text-white" : "bg-zinc-900/40 text-zinc-300 hover:text-white"
+                        "justify-start h-11 border-border text-xs",
+                        active ? "bg-secondary text-foreground font-semibold" : "bg-card text-muted-foreground hover:text-foreground"
                       )}
                     >
                       <Link href={item.href}>
-                        <item.icon className="h-4 w-4 mr-2" />
+                        <item.icon className="h-4 w-4 mr-2 text-primary" />
                         {item.label}
                       </Link>
                     </Button>
@@ -110,20 +110,20 @@ export function BottomNav() {
               </div>
 
               <div className="space-y-4 pb-6">
-                <Separator className="bg-zinc-850" />
+                <Separator className="bg-border" />
                 {me?.user?.role === "admin" && (
-                  <Button asChild variant="outline" onClick={() => setIsOpen(false)} className="w-full justify-start border-zinc-800 bg-zinc-900/40 text-zinc-300 hover:text-white">
+                  <Button asChild variant="outline" onClick={() => setIsOpen(false)} className="w-full justify-start border-border bg-card text-foreground">
                     <Link href="/admin">
-                      <Shield className="h-4 w-4 mr-2" />
+                      <Shield className="h-4 w-4 mr-2 text-primary" />
                       Go to Admin Dashboard
                     </Link>
                   </Button>
                 )}
                 
-                <div className="rounded-xl bg-zinc-900 p-4 border border-zinc-850 flex items-center justify-between">
+                <div className="rounded-lg bg-secondary/50 p-3.5 border border-border flex items-center justify-between">
                   <div className="min-w-0 flex-1 mr-3">
-                    <div className="font-bold text-sm text-zinc-100 truncate">{me?.user?.name || "Signed in"}</div>
-                    <div className="truncate text-xs text-zinc-400 mt-0.5">{me?.user?.email}</div>
+                    <div className="font-bold text-xs text-foreground truncate">{me?.user?.name || "Signed in"}</div>
+                    <div className="truncate text-[10px] text-muted-foreground mt-0.5">{me?.user?.email}</div>
                   </div>
                   <Button 
                     variant="destructive" 
@@ -132,9 +132,9 @@ export function BottomNav() {
                       setIsOpen(false);
                       logout();
                     }}
-                    className="font-bold shrink-0"
+                    className="font-semibold text-xs shrink-0 h-8"
                   >
-                    <LogOut className="h-4 w-4 mr-1.5" />
+                    <LogOut className="h-3.5 w-3.5 mr-1.5" />
                     Logout
                   </Button>
                 </div>
