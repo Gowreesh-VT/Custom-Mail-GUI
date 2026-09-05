@@ -8,14 +8,33 @@ export const dynamic = "force-dynamic";
 export async function GET(req: NextRequest) {
   const { user } = await requireUser(req);
   const url = new URL(req.url);
-  const q = url.searchParams.get("q") || "";
+  const q = url.searchParams.get("q")?.trim() || "";
+
+  const where: any = {
+    userId: String(user._id)
+  };
+
+  if (q) {
+    const conditions: any[] = [
+      { subject: { contains: q, mode: "insensitive" } },
+      { toAddresses: { contains: q, mode: "insensitive" } }
+    ];
+    if (q.toLowerCase() === "sent" || q.toLowerCase() === "failed") {
+      conditions.push({ status: q.toLowerCase() });
+    }
+    where.OR = conditions;
+  }
+
   const emails = await prisma.email.findMany({
-    where: {
-      userId: String(user._id),
-      ...(q ? { OR: [{ subject: { contains: q, mode: "insensitive" } }, { toAddresses: { contains: q, mode: "insensitive" } }] } : {})
-    },
+    where,
     orderBy: { sentAt: "desc" },
-    take: 100
+    take: q ? 2000 : 100
   });
-  return Response.json({ success: true, emails: emails.map(emailRecord) });
+
+  return Response.json({
+    success: true,
+    count: emails.length,
+    isSearch: Boolean(q),
+    emails: emails.map(emailRecord)
+  });
 }

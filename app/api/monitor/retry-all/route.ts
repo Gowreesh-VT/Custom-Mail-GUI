@@ -13,6 +13,12 @@ export async function POST(req: NextRequest) {
   const emails = (await prisma.email.findMany({ where: { userId: String(user._id), status: "failed", acknowledged: false, sentAt: { gte: since } }, take: 50 })).map(emailRecord);
   const results = [];
   for (const email of emails) {
+    const claimed = await prisma.email.updateMany({
+      where: { id: email.id, status: "failed" },
+      data: { status: "sending" }
+    });
+    if (claimed.count === 0) continue;
+
     try {
       const result = await sendEmailWithFallback({
         userId: String(user._id),
@@ -33,7 +39,7 @@ export async function POST(req: NextRequest) {
       results.push({ id: email.id, success: true });
     } catch (error: any) {
       const retryHistory = [...email.retryHistory, { attemptedAt: new Date().toISOString(), success: false, error: error.message }];
-      await prisma.email.update({ where: { id: email.id }, data: { retryCount: { increment: 1 }, retryHistory: toJson(retryHistory) } });
+      await prisma.email.update({ where: { id: email.id }, data: { status: "failed", errorMsg: error.message, retryCount: { increment: 1 }, retryHistory: toJson(retryHistory) } });
       results.push({ id: email.id, success: false, error: error.message });
     }
   }

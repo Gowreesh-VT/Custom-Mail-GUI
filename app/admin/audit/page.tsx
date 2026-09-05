@@ -47,14 +47,14 @@ const ACTION_ICONS: Record<string, React.ReactNode> = {
   "email.failed": <Mail className="h-3 w-3 text-red-400" />,
   "user.login": <User className="h-3 w-3 text-green-400" />,
   "user.login_failed": <User className="h-3 w-3 text-red-400" />,
-  "admin.user_created": <Shield className="h-3 w-3 text-blue-400" />,
+  "admin.user_created": <Shield className="h-3 w-3 text-primary" />,
   "admin.user_role_changed": <Shield className="h-3 w-3 text-orange-400" />,
   "qr.bulk_generated": <ZapIcon className="h-3 w-3 text-purple-400" />,
   "certificate.bulk_generated": <FileText className="h-3 w-3 text-cyan-400" />,
 };
 
 const ACTION_COLOR: Record<string, string> = {
-  AUTH: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  AUTH: "bg-zinc-800/80 text-zinc-300 border-zinc-700",
   EMAIL: "bg-green-500/10 text-green-400 border-green-500/20",
   ADMIN: "bg-orange-500/10 text-orange-400 border-orange-500/20",
 };

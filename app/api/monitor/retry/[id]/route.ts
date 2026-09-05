@@ -9,8 +9,20 @@ import { toJson } from "@/lib/json-fields";
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { user } = await requireUser(req);
   const { id } = await params;
-  const email = emailRecord(await prisma.email.findFirst({ where: { id, userId: String(user._id), status: "failed" } }));
-  if (!email) return jsonError("Failed email not found", 404);
+
+  // Atomically claim the record from "failed" to "sending" to prevent duplicate sends
+  const claimed = await prisma.email.updateMany({
+    where: { id, userId: String(user._id), status: "failed" },
+    data: { status: "sending" }
+  });
+
+  if (claimed.count === 0) {
+    return jsonError("Email is not in failed state or is already being retried", 409, "ALREADY_RETRIED");
+  }
+
+  const email = emailRecord(await prisma.email.findUnique({ where: { id } }));
+  if (!email) return jsonError("Email not found", 404);
+
   try {
     const result = await sendEmailWithFallback({
       userId: String(user._id),
@@ -28,13 +40,24 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
     await prisma.email.update({
       where: { id },
-      data: { status: "sent", errorMsg: null, retryCount: { increment: 1 }, usedFallbackSmtp: result.usedFallback, retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: true }]) }
+      data: {
+        status: "sent",
+        errorMsg: null,
+        retryCount: { increment: 1 },
+        usedFallbackSmtp: result.usedFallback,
+        retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: true }])
+      }
     });
     return Response.json({ success: true });
   } catch (error: any) {
     await prisma.email.update({
       where: { id },
-      data: { retryCount: { increment: 1 }, retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: false, error: error.message }]) }
+      data: {
+        status: "failed",
+        errorMsg: error.message,
+        retryCount: { increment: 1 },
+        retryHistory: toJson([...email.retryHistory, { attemptedAt: new Date().toISOString(), success: false, error: error.message }])
+      }
     });
     return jsonError(error.message, 400, "RETRY_FAILED");
   }

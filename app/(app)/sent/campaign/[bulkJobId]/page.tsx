@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
-  BarChart2, CheckCircle2, ChevronRight, Cpu, Eye, Globe, Laptop, Link2, Loader2, Search, Send
+  BarChart2, CheckCircle2, ChevronRight, Cpu, Eye, Globe, Laptop, Layers, Link2, Loader2, Mail, Search, Send
 } from "lucide-react";
 import { Area, AreaChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
 
@@ -73,6 +75,18 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   const [data, setData] = React.useState<CampaignAnalyticsData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
+  const router = useRouter();
+  const [allCampaigns, setAllCampaigns] = React.useState<Array<{ bulkJobId: string; subject: string; sentAt: string }>>([]);
+
+  React.useEffect(() => {
+    apiFetch<any>("/api/sent/campaign")
+      .then((res) => {
+        if (res.success && Array.isArray(res.campaigns)) {
+          setAllCampaigns(res.campaigns);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -144,19 +158,56 @@ export default function CampaignAnalyticsPage({ params }: Props) {
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
-          <Link href="/sent" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
-            <Send className="h-3 w-3" /> Back to Sent History
-          </Link>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <Link href="/sent" className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+              <Send className="h-3 w-3" /> Sent History
+            </Link>
+            <span>/</span>
+            <Link href="/sent/campaign" className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
+              <Layers className="h-3 w-3" /> All Campaigns
+            </Link>
+          </div>
           <h1 className="text-2xl font-bold tracking-tight">Campaign Analytics</h1>
           <p className="text-sm text-muted-foreground max-w-2xl truncate">
             Subject: <strong className="text-foreground">{campaign.subject}</strong> · Template: <strong className="text-foreground">{campaign.templateName}</strong>
           </p>
         </div>
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
-            Campaign ID: {bulkJobId.slice(0, 8)}...
-          </Badge>
-          <Button variant="outline" size="sm" onClick={loadData}>Refresh</Button>
+        <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+          {allCampaigns.length > 1 && (
+            <div className="flex items-center gap-1.5">
+              <Select
+                value={bulkJobId}
+                onValueChange={(newId) => {
+                  if (newId && newId !== bulkJobId) {
+                    router.push(`/sent/campaign/${newId}`);
+                  }
+                }}
+              >
+                <SelectTrigger className="h-8 text-xs max-w-[190px]">
+                  <SelectValue placeholder="Switch Campaign" />
+                </SelectTrigger>
+                <SelectContent align="end" className="max-w-[280px]">
+                  {allCampaigns.map((c) => (
+                    <SelectItem key={c.bulkJobId} value={c.bulkJobId} className="text-xs">
+                      <div className="truncate text-left">
+                        <span className="font-medium truncate block max-w-[200px]">{c.subject}</span>
+                        <span className="text-[10px] text-muted-foreground font-mono">#{c.bulkJobId.slice(0, 8)}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+            <Link href="/sent/campaign">
+              <Layers className="h-3.5 w-3.5" />
+              All Campaigns
+            </Link>
+          </Button>
+          <Button variant="outline" size="sm" onClick={loadData} className="h-8 text-xs">
+            Refresh
+          </Button>
         </div>
       </div>
 
@@ -201,7 +252,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
             <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Unique Opens</CardTitle>
-            <Eye className="h-4 w-4 text-blue-500" />
+            <Eye className="h-4 w-4 text-emerald-400" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{campaign.openRate.toFixed(1)}%</div>
@@ -209,7 +260,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
               <span>Opened: {campaign.totalOpened} recipients</span>
             </div>
             <div className="w-full bg-muted rounded-full h-1 mt-2 overflow-hidden">
-              <div className="bg-blue-500 h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, Math.max(0, campaign.openRate))}%` }} />
+              <div className="bg-emerald-500 h-full rounded-full transition-all duration-300" style={{ width: `${Math.min(100, Math.max(0, campaign.openRate))}%` }} />
             </div>
           </CardContent>
         </Card>

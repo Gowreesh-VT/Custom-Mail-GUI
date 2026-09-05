@@ -162,7 +162,7 @@ export default function PushCentrePage() {
         </Card>
         <Card>
           <CardHeader className="pb-2"><CardTitle className="text-sm text-muted-foreground">Unique Users</CardTitle></CardHeader>
-          <CardContent><div className="text-3xl font-bold text-blue-400">{s?.uniqueUsers ?? "—"}</div></CardContent>
+          <CardContent><div className="text-3xl font-bold text-foreground font-mono">{s?.uniqueUsers ?? "—"}</div></CardContent>
         </Card>
       </div>
 

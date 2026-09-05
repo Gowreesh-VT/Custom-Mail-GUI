@@ -27,6 +27,11 @@ export async function GET(req: NextRequest) {
       where: { userId: String(user._id), isAdminAssigned: true, isPrimary: true, isActive: true },
       select: { lastTestSuccess: true, lastTestedAt: true }
     });
+    const healthLogs = await prisma.smtpHealthLog.findMany({
+      where: { userId: String(user._id) },
+      orderBy: { testedAt: "desc" },
+      take: 10
+    });
     return Response.json({
       success: true,
       smtpConfig: {
@@ -39,7 +44,8 @@ export async function GET(req: NextRequest) {
         rejectUnauth: config.rejectUnauth !== false,
         hasPassword: Boolean(config.passwordEnc)
       },
-      smtpHealthLog: user.smtpHealthLog || [],
+      smtpHealthLog: healthLogs,
+      smtpHealthLogs: healthLogs,
       globalSmtpActive: await isGlobalSmtpActive(),
       adminSmtpLocked: Boolean(user.adminSmtpLocked),
       adminSmtpStatus: adminPrimary

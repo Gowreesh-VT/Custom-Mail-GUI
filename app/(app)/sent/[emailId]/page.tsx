@@ -198,7 +198,7 @@ export default function SingleEmailPage({ params }: Props) {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
                 <CardTitle className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Total Opens</CardTitle>
-                <Eye className="h-4 w-4 text-blue-500" />
+                <Eye className="h-4 w-4 text-emerald-400" />
               </CardHeader>
               <CardContent>
                 <div className="text-2xl font-bold">{email.openCount}</div>

@@ -99,7 +99,7 @@ export default function SmtpMonitorPage() {
           { label: "Healthy", value: s?.healthyUsers ?? "—", color: "text-emerald-400" },
           { label: "Failing", value: s?.failingUsers ?? "—", color: "text-red-400" },
           { label: "Unconfigured", value: s?.unconfiguredUsers ?? "—", color: "text-amber-400" },
-          { label: "Fallback Events", value: s?.totalFallbackEvents ?? "—", color: "text-blue-400" },
+          { label: "Fallback Events", value: s?.totalFallbackEvents ?? "—", color: "text-amber-400" },
         ].map(({ label, value, color }) => (
           <Card key={label}>
             <CardHeader className="pb-2">
@@ -147,7 +147,7 @@ export default function SmtpMonitorPage() {
                       )}
                     </div>
                     {user.fallbackEnabled && (
-                      <Badge variant="outline" className="border-blue-500/30 text-blue-400 bg-blue-500/5 text-xs">
+                      <Badge variant="outline" className="border-amber-500/30 text-amber-400 bg-amber-500/10 text-xs">
                         Fallback
                       </Badge>
                     )}
