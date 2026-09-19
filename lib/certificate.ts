@@ -11,6 +11,16 @@ export type CertField = {
   isBold: boolean;
   isItalic: boolean;
   alignment: "left" | "center" | "right";
+  /** Where to draw the value, in PDF points (origin bottom-left). When set, nothing is covered or searched for. */
+  box?: CertBox;
+};
+
+export type CertBox = {
+  pageIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 };
 
 export type GenerateCertOptions = {
@@ -37,8 +47,16 @@ export function parseCertFields(value: string | null | undefined): CertField[] {
   }
 }
 
+function normalizeCertBox(box: Partial<CertBox> | null | undefined): CertBox | undefined {
+  if (!box) return undefined;
+  const [x, y, width, height] = [box.x, box.y, box.width, box.height].map(Number);
+  if (![x, y, width, height].every(Number.isFinite) || width <= 0 || height <= 0) return undefined;
+  return { pageIndex: Math.max(0, Math.floor(Number(box.pageIndex) || 0)), x, y, width, height };
+}
+
 export function normalizeCertField(field: Partial<CertField> & { placeholder?: string }): CertField {
   const placeholder = String(field.placeholder || "").trim();
+  const box = normalizeCertBox(field.box);
   return {
     id: String(field.id || crypto.randomUUID()),
     placeholder,
@@ -48,7 +66,8 @@ export function normalizeCertField(field: Partial<CertField> & { placeholder?: s
     color: /^#[0-9a-f]{6}$/i.test(String(field.color || "")) ? String(field.color) : "#000000",
     isBold: Boolean(field.isBold),
     isItalic: Boolean(field.isItalic),
-    alignment: field.alignment === "center" || field.alignment === "right" ? field.alignment : "left"
+    alignment: field.alignment === "center" || field.alignment === "right" ? field.alignment : "left",
+    ...(box ? { box } : {})
   };
 }
 
@@ -113,6 +132,28 @@ export async function generateCertificate(options: GenerateCertOptions): Promise
 
     const font = field.isBold && field.isItalic ? boldItalicFont : field.isBold ? boldFont : field.isItalic ? italicFont : regularFont;
     const [r, g, b] = hexToRgb(field.color);
+
+    if (field.box) {
+      const page = pages[field.box.pageIndex];
+      if (!page) continue;
+      // Shrink long values so they stay inside the box instead of overflowing.
+      const maxWidth = font.widthOfTextAtSize(value, field.fontSize);
+      const size = maxWidth > field.box.width ? Math.max(6, (field.fontSize * field.box.width) / maxWidth) : field.fontSize;
+      const textWidth = font.widthOfTextAtSize(value, size);
+      let drawX = field.box.x;
+      if (field.alignment === "center") drawX = field.box.x + field.box.width / 2 - textWidth / 2;
+      if (field.alignment === "right") drawX = field.box.x + field.box.width - textWidth;
+      const ascent = font.heightAtSize(size, { descender: false });
+      page.drawText(value, {
+        x: drawX,
+        y: field.box.y + (field.box.height - ascent) / 2,
+        size,
+        font,
+        color: rgb(r, g, b)
+      });
+      continue;
+    }
+
     const textPositions = await findTextInDocument(options.pdfBase64, field.placeholder);
 
     for (const pos of textPositions) {

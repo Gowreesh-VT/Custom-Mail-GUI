@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
+import { CertificatePositionPicker, type CertBox } from "@/components/certificate-position-picker";
 
 type CertField = {
   id: string;
@@ -23,6 +24,7 @@ type CertField = {
   isBold: boolean;
   isItalic: boolean;
   alignment: "left" | "center" | "right";
+  box?: CertBox;
 };
 
 type CertTemplate = {
@@ -50,17 +52,16 @@ const emptyField = (): CertField => ({
 export default function CertificateEditPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
   const [template, setTemplate] = useState<CertTemplate | null>(null);
-  const [previewPdf, setPreviewPdf] = useState("");
   const [sampleData, setSampleData] = useState<Record<string, string>>({});
   const [dirty, setDirty] = useState(false);
   const [generations, setGenerations] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [status, setStatus] = useState("all");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     apiFetch<{ template: CertTemplate }>(`/api/certificates/${id}`).then(({ template }) => {
       setTemplate(template);
-      setPreviewPdf(template.pdfBase64);
       setSampleData(Object.fromEntries(template.fields.map((field) => [field.placeholder, field.label || field.placeholder])));
     }).catch((error) => toast.error(error.message));
   }, [id]);
@@ -112,13 +113,19 @@ export default function CertificateEditPage({ params }: { params: Promise<{ id: 
     toast.success("Certificate saved");
   }
 
-  async function preview() {
+  async function downloadSample() {
     await save();
     const data = await apiFetch<{ pdfBase64: string }>(`/api/certificates/${id}/preview`, {
       method: "POST",
       body: JSON.stringify({ mergeData: sampleData })
     });
-    setPreviewPdf(data.pdfBase64);
+    const bytes = Uint8Array.from(atob(data.pdfBase64), (char) => char.charCodeAt(0));
+    const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${template?.name || "certificate"}-sample.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   function exportCsv() {
@@ -145,10 +152,17 @@ export default function CertificateEditPage({ params }: { params: Promise<{ id: 
         <TabsContent value="edit" className="grid gap-5 xl:grid-cols-[40%_1fr]">
           <div className="space-y-4">
             <Card><CardHeader><CardTitle>Template</CardTitle></CardHeader><CardContent className="space-y-3"><Label>Name<Input value={template.name} onChange={(event) => patchTemplate({ name: event.target.value })} /></Label><Label>Description<Textarea value={template.description || ""} onChange={(event) => patchTemplate({ description: event.target.value })} /></Label></CardContent></Card>
-            <Card><CardHeader><CardTitle>Fields</CardTitle></CardHeader><CardContent className="space-y-3">{template.fields.map((field, index) => <FieldEditor key={field.id} field={field} onChange={(patch) => updateField(index, patch)} onDelete={() => patchTemplate({ fields: template.fields.filter((_, i) => i !== index) })} />)}<Button variant="outline" onClick={() => patchTemplate({ fields: [...template.fields, emptyField()] })}><Plus className="h-4 w-4" />Add Field</Button></CardContent></Card>
-            <Card><CardHeader><CardTitle>Sample Data</CardTitle></CardHeader><CardContent className="space-y-3">{template.fields.map((field) => <Label key={field.id}>{field.label || field.placeholder}<Input value={sampleData[field.placeholder] || ""} onChange={(event) => setSampleData({ ...sampleData, [field.placeholder]: event.target.value })} /></Label>)}<Button onClick={preview}>Preview with Sample Data</Button></CardContent></Card>
+            <Card><CardHeader><CardTitle>Fields</CardTitle></CardHeader><CardContent className="space-y-3">{template.fields.map((field, index) => <FieldEditor key={field.id} field={field} selected={field.id === selectedId} onSelect={() => setSelectedId(field.id)} onChange={(patch) => updateField(index, patch)} onDelete={() => patchTemplate({ fields: template.fields.filter((_, i) => i !== index) })} />)}<Button variant="outline" onClick={() => patchTemplate({ fields: [...template.fields, emptyField()] })}><Plus className="h-4 w-4" />Add Field</Button></CardContent></Card>
+            <Card><CardHeader><CardTitle>Sample Data</CardTitle></CardHeader><CardContent className="space-y-3">{template.fields.map((field) => <Label key={field.id}>{field.label || field.placeholder}<Input value={sampleData[field.placeholder] || ""} onChange={(event) => setSampleData({ ...sampleData, [field.placeholder]: event.target.value })} /></Label>)}<Button variant="outline" onClick={downloadSample}><Download className="h-4 w-4" />Download sample PDF</Button></CardContent></Card>
           </div>
-          <Card><CardHeader><CardTitle>{template.pdfFileName}</CardTitle></CardHeader><CardContent><iframe title="Certificate PDF preview" className="h-[760px] w-full rounded-md border" src={`data:application/pdf;base64,${previewPdf}`} /></CardContent></Card>
+          <CertificatePositionPicker
+            pdfBase64={template.pdfBase64}
+            fields={template.fields}
+            sampleData={sampleData}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+            onBoxChange={(fieldId, box) => patchTemplate({ fields: template.fields.map((field) => field.id === fieldId ? { ...field, box } : field) })}
+          />
         </TabsContent>
         <TabsContent value="generations" className="space-y-4">
           <div className="grid gap-3 md:grid-cols-4">
@@ -165,8 +179,8 @@ export default function CertificateEditPage({ params }: { params: Promise<{ id: 
   );
 }
 
-function FieldEditor({ field, onChange, onDelete }: { field: CertField; onChange: (patch: Partial<CertField>) => void; onDelete: () => void }) {
-  return <div className="grid gap-3 rounded-md border p-3"><div className="grid gap-3 md:grid-cols-2"><Label>Placeholder<Input value={field.placeholder} onChange={(event) => onChange({ placeholder: event.target.value })} /></Label><Label>Label<Input value={field.label} onChange={(event) => onChange({ label: event.target.value })} /></Label></div><div className="grid gap-3 md:grid-cols-4"><Label>Fallback<Input value={field.defaultValue} onChange={(event) => onChange({ defaultValue: event.target.value })} /></Label><Label>Font size<Input type="number" value={field.fontSize} onChange={(event) => onChange({ fontSize: Number(event.target.value) })} /></Label><Label>Color<Input type="color" value={field.color} onChange={(event) => onChange({ color: event.target.value })} /></Label><Label>Alignment<select className="mt-2 w-full rounded-md border bg-background p-2" value={field.alignment} onChange={(event) => onChange({ alignment: event.target.value as CertField["alignment"] })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></Label></div><div className="flex gap-3"><Label className="flex items-center gap-2"><input type="checkbox" checked={field.isBold} onChange={(event) => onChange({ isBold: event.target.checked })} />Bold</Label><Label className="flex items-center gap-2"><input type="checkbox" checked={field.isItalic} onChange={(event) => onChange({ isItalic: event.target.checked })} />Italic</Label><Button variant="destructive" size="sm" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button></div></div>;
+function FieldEditor({ field, selected, onSelect, onChange, onDelete }: { field: CertField; selected: boolean; onSelect: () => void; onChange: (patch: Partial<CertField>) => void; onDelete: () => void }) {
+  return <div className={`grid gap-3 rounded-md border p-3 ${selected ? "border-emerald-400" : ""}`}><div className="grid gap-3 md:grid-cols-2"><Label>Placeholder<Input value={field.placeholder} onChange={(event) => onChange({ placeholder: event.target.value })} /></Label><Label>Label<Input value={field.label} onChange={(event) => onChange({ label: event.target.value })} /></Label></div><div className="grid gap-3 md:grid-cols-4"><Label>Fallback<Input value={field.defaultValue} onChange={(event) => onChange({ defaultValue: event.target.value })} /></Label><Label>Font size<Input type="number" value={field.fontSize} onChange={(event) => onChange({ fontSize: Number(event.target.value) })} /></Label><Label>Color<Input type="color" value={field.color} onChange={(event) => onChange({ color: event.target.value })} /></Label><Label>Alignment<select className="mt-2 w-full rounded-md border bg-background p-2" value={field.alignment} onChange={(event) => onChange({ alignment: event.target.value as CertField["alignment"] })}><option value="left">Left</option><option value="center">Center</option><option value="right">Right</option></select></Label></div><div className="flex gap-3"><Label className="flex items-center gap-2"><input type="checkbox" checked={field.isBold} onChange={(event) => onChange({ isBold: event.target.checked })} />Bold</Label><Label className="flex items-center gap-2"><input type="checkbox" checked={field.isItalic} onChange={(event) => onChange({ isItalic: event.target.checked })} />Italic</Label><Button variant={selected ? "default" : "outline"} size="sm" onClick={onSelect}>{field.box ? "Reposition" : "Set position"}</Button>{field.box && <Button variant="ghost" size="sm" onClick={() => onChange({ box: undefined })}>Clear position</Button>}<Button variant="destructive" size="sm" onClick={onDelete}><Trash2 className="h-4 w-4" /></Button></div></div>;
 }
 
 function Stat({ label, value }: { label: string; value: string | number }) {
