@@ -608,3 +608,17 @@ model PushSubscription {
   createdAt     DateTime @default(now())
   lastUsedAt    DateTime @default(now())
 }
+
+// Uploaded attachments on hosts without a writable filesystem (e.g. Vercel).
+// Referenced from attachment records as path "db:<id>".
+model StoredFile {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  mimeType  String
+  size      Int
+  data      Bytes
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}

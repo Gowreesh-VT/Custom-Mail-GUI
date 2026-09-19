@@ -838,6 +838,18 @@ export default function BulkPage() {
       if (!res.ok || !data.success) {
         throw new Error(data.error || "Failed to generate letter preview");
       }
+      if (data.contentType && data.contentType !== "application/pdf") {
+        // DOCX can't be shown inline, so download it (PDF conversion only runs on localhost).
+        const bytes = Uint8Array.from(atob(data.pdfBase64), (char) => char.charCodeAt(0));
+        const url = URL.createObjectURL(new Blob([bytes], { type: data.contentType }));
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = data.fileName || "letter.docx";
+        a.click();
+        URL.revokeObjectURL(url);
+        toast.info("Letters are sent as DOCX here (PDF conversion is localhost-only). Sample downloaded.");
+        return;
+      }
       setLetterPreviewPdf(data.pdfBase64);
       setLetterPreviewOpen(true);
     } catch (err: any) {

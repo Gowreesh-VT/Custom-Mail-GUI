@@ -1,3 +1,4 @@
+import { isDbAttachmentPath, loadDbAttachment } from "@/lib/attachment-store";
 import nodemailer from "nodemailer";
 import type Mail from "nodemailer/lib/mailer";
 import type { SmtpPool } from "@prisma/client";
@@ -287,6 +288,11 @@ export async function normalizeAttachments(userId: string, attachments: SendPayl
       continue;
     }
     try {
+      if (isDbAttachmentPath(attachment.path)) {
+        const stored = await loadDbAttachment(userId, attachment.path);
+        normalized.push({ name: filename || stored.name, content: stored.content, contentType: attachment.contentType || stored.mimeType });
+        continue;
+      }
       const resolvedPath = resolveUserAttachmentPath(userId, attachment.path);
       await access(resolvedPath);
       normalized.push({

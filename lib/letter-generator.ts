@@ -362,6 +362,9 @@ export async function generateLetterAttachmentForRow(
 
   // Mode A: Direct Local PDF Folder Matching
   if (config.mode === "local_pdf_folder") {
+    if (process.env.VERCEL) {
+      throw new Error("Local PDF folder mode isn't available on the deployed site (no local filesystem). Use DOCX generation instead.");
+    }
     const matched = await matchLocalPdfAttachment(config.pdfFolder || "generated_pdf", dept, regno, row.email || "");
     if (matched) {
       return {
@@ -373,7 +376,7 @@ export async function generateLetterAttachmentForRow(
     throw new Error(`No matching PDF found in '${config.pdfFolder || "generated_pdf"}' for ${regno || dept || row.email}`);
   }
 
-  // Mode B: Generate DOCX & Convert to PDF on Localhost
+  // Mode B: Generate DOCX (converted to PDF on localhost only)
   let docxBuffer = templateBuffers?.defaultDocx;
   if (dept.toLowerCase().includes("entrepreneur") && templateBuffers?.entrepreneurshipDocx) {
     docxBuffer = templateBuffers.entrepreneurshipDocx;
@@ -398,13 +401,21 @@ export async function generateLetterAttachmentForRow(
   // Merge DOCX
   const mergedDocx = await mergeDocxTemplate(docxBuffer, replacements);
 
-  // Convert to PDF
-  const { pdfBuffer } = await convertDocxToSinglePagePdf(mergedDocx);
+  // DOCX -> PDF needs a local LibreOffice install, so it only runs off Vercel.
+  // Everywhere else (or if conversion fails) the merged DOCX is attached as-is.
+  if (!process.env.VERCEL) {
+    try {
+      const { pdfBuffer } = await convertDocxToSinglePagePdf(mergedDocx);
+      return { name: defaultFileName, content: pdfBuffer, contentType: "application/pdf" };
+    } catch (error) {
+      console.warn("DOCX to PDF conversion unavailable, attaching DOCX instead:", error);
+    }
+  }
 
   return {
-    name: defaultFileName,
-    content: pdfBuffer,
-    contentType: "application/pdf"
+    name: defaultFileName.replace(/\.pdf$/i, ".docx"),
+    content: mergedDocx,
+    contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   };
 }
 

@@ -37,6 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       fileName: result.name,
+      contentType: result.contentType,
       pdfBase64: result.content.toString("base64")
     });
   } catch (error: any) {

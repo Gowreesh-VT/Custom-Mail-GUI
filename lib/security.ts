@@ -1,6 +1,7 @@
 import path from "path";
 import { access } from "fs/promises";
 import type { AttachmentRecord } from "@/types/models";
+import { dbAttachmentExists, isDbAttachmentPath } from "@/lib/attachment-store";
 
 type RateLimitEntry = {
   attempts: number;
@@ -52,6 +53,16 @@ export async function normalizeUploadedAttachmentRecords(
   const normalized: AttachmentRecord[] = [];
   for (const attachment of attachments) {
     if (!attachment.path) throw new Error("Invalid attachment path");
+    if (isDbAttachmentPath(attachment.path)) {
+      if (!(await dbAttachmentExists(userId, attachment.path))) throw new Error("Invalid attachment path");
+      normalized.push({
+        name: path.basename(attachment.name || "attachment"),
+        size: Number(attachment.size) || 0,
+        mimeType: attachment.mimeType || "application/octet-stream",
+        path: attachment.path
+      });
+      continue;
+    }
     const resolvedPath = resolveUserAttachmentPath(userId, attachment.path);
     await access(resolvedPath);
     normalized.push({
