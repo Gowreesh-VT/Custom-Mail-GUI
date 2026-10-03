@@ -101,9 +101,7 @@ function SidebarBody({ isCollapsed = false, toggleSidebar }: { isCollapsed?: boo
           {!isCollapsed ? (
             <>
               <Link href="/dashboard" className="flex items-center gap-2.5 group min-w-0">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 transition-transform group-hover:scale-105 shrink-0">
-                  <Image src="/main-logo.svg" alt="Postly" width={20} height={20} className="h-5 w-5" />
-                </div>
+                <Image src="/main-logo.svg" alt="Postly" width={32} height={32} className="h-8 w-8 rounded-lg transition-transform group-hover:scale-105 shrink-0" />
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className="font-extrabold text-base tracking-tight text-foreground truncate">Postly</span>
@@ -131,9 +129,9 @@ function SidebarBody({ isCollapsed = false, toggleSidebar }: { isCollapsed?: boo
               <TooltipTrigger asChild>
                 <button
                   onClick={toggleSidebar}
-                  className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 hover:scale-105 transition-transform"
+                  className="flex h-9 w-9 items-center justify-center hover:scale-105 transition-transform"
                 >
-                  <Image src="/main-logo.svg" alt="Postly" width={22} height={22} className="h-5.5 w-5.5" />
+                  <Image src="/main-logo.svg" alt="Postly" width={36} height={36} className="h-9 w-9 rounded-lg" />
                 </button>
               </TooltipTrigger>
               <TooltipContent side="right" className="text-xs font-semibold">
@@ -344,7 +342,7 @@ export function AppSidebar() {
             </SheetContent>
           </Sheet>
           <span className="flex items-center gap-2 font-bold text-sm text-foreground">
-            <Image src="/main-logo.svg" alt="Postly" width={22} height={22} className="h-5.5 w-5.5" />
+            <Image src="/main-logo.svg" alt="Postly" width={24} height={24} className="h-6 w-6 rounded-md" />
             Postly
           </span>
         </div>

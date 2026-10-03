@@ -51,9 +51,7 @@ export function AuthForm({ mode }: { mode: "login" | "signup" }) {
     <Card className="w-full max-w-md border-border bg-card/90 shadow-xl backdrop-blur-sm card-glow">
       <CardHeader className="space-y-2 pb-4 text-center sm:text-left">
         <div className="flex items-center justify-center sm:justify-start gap-2.5 pb-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-            <Image src="/main-logo.svg" alt="Postly" width={22} height={22} className="h-5.5 w-5.5" priority />
-          </div>
+          <Image src="/main-logo.svg" alt="Postly" width={36} height={36} className="h-9 w-9 rounded-lg" />
           <span className="font-extrabold text-lg tracking-tight text-foreground">Postly</span>
         </div>
         <CardTitle className="text-xl font-bold text-foreground">

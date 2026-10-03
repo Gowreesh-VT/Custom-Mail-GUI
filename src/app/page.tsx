@@ -61,9 +61,7 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Link href="/" className="flex items-center gap-2.5 group">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 transition-transform group-hover:scale-105">
-                <Image src="/main-logo.svg" alt="Postly" width={22} height={22} className="h-5.5 w-5.5" />
-              </div>
+              <Image src="/main-logo.svg" alt="Postly" width={36} height={36} className="h-9 w-9 rounded-lg transition-transform group-hover:scale-105" />
               <div className="flex items-center gap-2">
                 <span className="font-bold text-lg tracking-tight">Postly</span>
                 <span className="hidden sm:inline-block text-[11px] font-mono font-medium px-2 py-0.5 rounded-md bg-secondary text-muted-foreground border border-border">
@@ -713,9 +711,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-2 md:grid-cols-5 gap-8 mb-12">
             <div className="col-span-2 space-y-3">
               <div className="flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary/10 border border-primary/20">
-                  <Image src="/main-logo.svg" alt="Postly" width={18} height={18} />
-                </div>
+                <Image src="/main-logo.svg" alt="Postly" width={28} height={28} className="h-7 w-7 rounded-lg" />
                 <span className="font-bold text-sm text-foreground tracking-tight">Postly</span>
               </div>
               <p className="text-xs text-muted-foreground max-w-sm leading-relaxed">

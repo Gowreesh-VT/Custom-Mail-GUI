@@ -1,6 +1,6 @@
 {
-  "name": "Custom Mail Scanner Operator App",
-  "short_name": "Mail Scan",
+  "name": "Postly Scanner",
+  "short_name": "Postly Scan",
   "description": "Mobile check-in scanner for campaign operators",
   "start_url": "/operator",
   "display": "standalone",

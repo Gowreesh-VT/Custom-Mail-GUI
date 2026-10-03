@@ -269,7 +269,7 @@ function DocsContent() {
             <SheetContent side="left" className="w-72 p-4 bg-background overflow-y-auto">
               <SheetHeader className="text-left pb-3 border-b border-border">
                 <SheetTitle className="text-sm font-bold flex items-center gap-2">
-                  <Image src="/main-logo.svg" alt="Postly" width={20} height={20} className="h-5 w-5" />
+                  <Image src="/main-logo.svg" alt="Postly" width={20} height={20} className="h-5 w-5 rounded" />
                   Postly Docs v2.5
                 </SheetTitle>
               </SheetHeader>
@@ -306,9 +306,7 @@ function DocsContent() {
           </Sheet>
 
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 border border-primary/20 transition-transform group-hover:scale-105">
-              <Image src="/main-logo.svg" alt="Postly" width={20} height={20} className="h-5 w-5" />
-            </div>
+            <Image src="/main-logo.svg" alt="Postly" width={32} height={32} className="h-8 w-8 rounded-lg transition-transform group-hover:scale-105" />
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-base tracking-tight text-foreground">Postly Docs</span>
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-secondary text-muted-foreground border border-border font-bold">

@@ -14,9 +14,7 @@ export default function SignupPage() {
       <div className="hidden lg:flex flex-col justify-between p-12 border-r border-border/80 bg-secondary/20 relative z-10">
         <div>
           <Link href="/" className="flex items-center gap-2.5 group">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10 border border-primary/20">
-              <Image src="/main-logo.svg" alt="Postly" width={22} height={22} className="h-5.5 w-5.5" />
-            </div>
+            <Image src="/main-logo.svg" alt="Postly" width={36} height={36} className="h-9 w-9 rounded-lg" />
             <span className="font-extrabold text-xl tracking-tight text-foreground">Postly</span>
           </Link>
         </div>

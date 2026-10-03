@@ -1,6 +1,6 @@
 {
-  "name": "Custom Mail",
-  "short_name": "Mail",
+  "name": "Postly",
+  "short_name": "Postly",
   "description": "Professional email client with templates, bulk send and QR codes",
   "start_url": "/dashboard",
   "scope": "/",
