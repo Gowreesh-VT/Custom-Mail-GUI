@@ -195,8 +195,10 @@ export default function CampaignAnalyticsPage({ params }: Props) {
                   }
                 }}
               >
-                <SelectTrigger className="h-8 w-[220px] text-xs">
-                  <SelectValue placeholder="Switch campaign" />
+                <SelectTrigger className="h-8 w-[220px] gap-2 text-xs">
+                  <SelectValue placeholder="Switch campaign" className="min-w-0 flex-1 truncate text-left">
+                    <span className="block truncate text-left">{campaign.subject}</span>
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent align="end" className="max-w-[320px]">
                   {allCampaigns.map((c) => (
