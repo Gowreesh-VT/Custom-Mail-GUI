@@ -32,6 +32,30 @@ export type CampaignReportData = {
   }>;
 };
 
+const BRAND = {
+  name: "Postly",
+  tagline: "Mail campaigns, tracked.",
+  dark: "#022c22",
+  accent: "#10b981",
+  soft: "#ecfdf5",
+  border: "#a7f3d0",
+  text: "#0f172a",
+  muted: "#64748b",
+};
+
+async function loadLogo(): Promise<{ url: string; base64: string } | null> {
+  try {
+    const url = `${window.location.origin}/main-logo.png`;
+    const buf = await (await fetch(url)).arrayBuffer();
+    let bin = "";
+    const bytes = new Uint8Array(buf);
+    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return { url, base64: btoa(bin) };
+  } catch {
+    return null;
+  }
+}
+
 const fmtDate = (s: string | null) => (s ? new Date(s).toLocaleString() : "Never");
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
@@ -69,29 +93,51 @@ function download(blob: Blob, filename: string) {
 }
 
 export async function downloadCampaignPdf(data: CampaignReportData) {
-  const { pdf, Document, Page, Text, View, StyleSheet } = await import("@react-pdf/renderer");
+  const { pdf, Document, Page, Text, View, Image, StyleSheet } = await import("@react-pdf/renderer");
+  const logo = await loadLogo();
   const s = StyleSheet.create({
-    page: { padding: 32, fontSize: 9, fontFamily: "Helvetica" },
-    title: { fontSize: 18, fontWeight: "bold", marginBottom: 4 },
-    subtitle: { fontSize: 10, color: "#666", marginBottom: 14 },
-    h2: { fontSize: 12, fontWeight: "bold", marginTop: 14, marginBottom: 6 },
+    page: { paddingTop: 0, paddingBottom: 40, paddingHorizontal: 0, fontSize: 9, fontFamily: "Helvetica", color: BRAND.text },
+    banner: { backgroundColor: BRAND.dark, paddingVertical: 20, paddingHorizontal: 32, flexDirection: "row", alignItems: "center", borderBottom: `3 solid ${BRAND.accent}` },
+    logo: { width: 36, height: 36, marginRight: 12, borderRadius: 8 },
+    brand: { color: "#ffffff", fontSize: 18, fontWeight: "bold" },
+    tagline: { color: "#6ee7b7", fontSize: 8, marginTop: 2 },
+    bannerRight: { marginLeft: "auto", alignItems: "flex-end" },
+    bannerTitle: { color: "#ffffff", fontSize: 11, fontWeight: "bold" },
+    bannerDate: { color: "#a7f3d0", fontSize: 8, marginTop: 2 },
+    body: { paddingHorizontal: 32, paddingTop: 18 },
+    title: { fontSize: 16, fontWeight: "bold", marginBottom: 3 },
+    subtitle: { fontSize: 9, color: BRAND.muted, marginBottom: 14 },
+    h2: { fontSize: 11, fontWeight: "bold", color: BRAND.dark, marginTop: 16, marginBottom: 6, paddingBottom: 3, borderBottom: `1.5 solid ${BRAND.accent}` },
     cards: { flexDirection: "row", flexWrap: "wrap" },
-    card: { width: "32%", border: "1 solid #ddd", borderRadius: 4, padding: 8, marginRight: "1%", marginBottom: 6 },
-    cardLabel: { fontSize: 8, color: "#666", marginBottom: 2 },
-    cardValue: { fontSize: 13, fontWeight: "bold" },
-    head: { flexDirection: "row", borderBottom: "1 solid #ddd", paddingBottom: 3, marginBottom: 3, fontWeight: "bold" },
-    row: { flexDirection: "row", paddingVertical: 2.5, borderBottom: "0.5 solid #f0f0f0" },
+    card: { width: "32%", backgroundColor: BRAND.soft, borderLeft: `3 solid ${BRAND.accent}`, borderRadius: 3, padding: 8, marginRight: "1.3%", marginBottom: 6 },
+    cardLabel: { fontSize: 8, color: BRAND.muted, marginBottom: 2 },
+    cardValue: { fontSize: 14, fontWeight: "bold", color: BRAND.dark },
+    head: { flexDirection: "row", backgroundColor: BRAND.soft, paddingVertical: 4, paddingHorizontal: 4, marginBottom: 2, fontWeight: "bold", color: BRAND.dark },
+    row: { flexDirection: "row", paddingVertical: 3, paddingHorizontal: 4, borderBottom: "0.5 solid #e2e8f0" },
     cols3: { flexDirection: "row", justifyContent: "space-between" },
     box: { width: "32%" },
+    footer: { position: "absolute", bottom: 14, left: 32, right: 32, flexDirection: "row", justifyContent: "space-between", fontSize: 7.5, color: BRAND.muted, borderTop: "0.5 solid #cbd5e1", paddingTop: 5 },
   });
   const { campaign: c } = data;
 
   const doc = (
-    <Document>
+    <Document title={`Campaign report - ${c.subject}`} author={BRAND.name} creator={BRAND.name}>
       <Page size="A4" style={s.page}>
-        <Text style={s.title}>Campaign Analytics Report</Text>
+        <View style={s.banner} fixed={false}>
+          {logo && <Image src={logo.url} style={s.logo} />}
+          <View>
+            <Text style={s.brand}>{BRAND.name}</Text>
+            <Text style={s.tagline}>{BRAND.tagline}</Text>
+          </View>
+          <View style={s.bannerRight}>
+            <Text style={s.bannerTitle}>Campaign Analytics Report</Text>
+            <Text style={s.bannerDate}>{new Date().toLocaleDateString(undefined, { dateStyle: "long" })}</Text>
+          </View>
+        </View>
+        <View style={s.body}>
+        <Text style={s.title}>{c.subject}</Text>
         <Text style={s.subtitle}>
-          {c.subject} · Template: {c.templateName} · Sent {fmtDate(c.sentAt)} · Generated {new Date().toLocaleString()}
+          Template: {c.templateName} · Sent {fmtDate(c.sentAt)}
         </Text>
 
         <View style={s.cards}>
@@ -107,7 +153,7 @@ export async function downloadCampaignPdf(data: CampaignReportData) {
         <View style={s.cols3}>
           {breakdowns(data.analytics).map(([title, rows]) => (
             <View key={title} style={s.box}>
-              <Text style={{ fontWeight: "bold", marginBottom: 3 }}>{title}</Text>
+              <Text style={{ fontWeight: "bold", marginBottom: 3, color: BRAND.dark }}>{title}</Text>
               {rows.length === 0 && <Text style={{ color: "#888" }}>No data</Text>}
               {rows.map(([k, v]) => (
                 <Text key={k}>{k}: {v}</Text>
@@ -150,8 +196,8 @@ export async function downloadCampaignPdf(data: CampaignReportData) {
           </>
         )}
 
-        <Text style={s.h2} break>Recipients ({data.recipients.length})</Text>
-        <View style={s.head} fixed>
+        <Text style={s.h2} minPresenceAhead={60}>Recipients ({data.recipients.length})</Text>
+        <View style={s.head}>
           <Text style={{ width: "38%" }}>Email</Text>
           <Text style={{ width: "12%" }}>Status</Text>
           <Text style={{ width: "10%" }}>Opens</Text>
@@ -167,11 +213,11 @@ export async function downloadCampaignPdf(data: CampaignReportData) {
             <Text style={{ width: "30%" }}>{fmtDate(r.firstOpenedAt)}</Text>
           </View>
         ))}
-        <Text
-          fixed
-          style={{ position: "absolute", bottom: 14, left: 0, right: 0, textAlign: "center", fontSize: 8, color: "#888" }}
-          render={({ pageNumber, totalPages }) => `${pageNumber} / ${totalPages}`}
-        />
+        </View>
+        <View style={s.footer} fixed>
+          <Text>Generated by {BRAND.name} · {new Date().toLocaleString()}</Text>
+          <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+        </View>
       </Page>
     </Document>
   );
@@ -185,32 +231,72 @@ const esc = (v: unknown) =>
 
 function table(headers: string[], rows: Array<Array<string | number>>) {
   return (
-    `<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;border-color:#cccccc;width:100%">` +
-    `<tr style="background:#f1f5f9">${headers.map((h) => `<th align="left">${esc(h)}</th>`).join("")}</tr>` +
-    rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join("")}</tr>`).join("") +
+    `<table border="0" cellspacing="0" cellpadding="5" style="border-collapse:collapse;width:100%">` +
+    `<tr>${headers.map((h) => `<th align="left" style="background:${BRAND.dark};color:#ffffff;font-size:10pt">${esc(h)}</th>`).join("")}</tr>` +
+    rows
+      .map(
+        (r, i) =>
+          `<tr>${r.map((c) => `<td style="border-bottom:1px solid #e2e8f0;background:${i % 2 ? BRAND.soft : "#ffffff"}">${esc(c)}</td>`).join("")}</tr>`
+      )
+      .join("") +
     `</table>`
   );
 }
 
-/** Word opens HTML saved as .doc natively — no extra dependency needed. */
-export function downloadCampaignWord(data: CampaignReportData) {
+/**
+ * Word opens MHTML saved as .doc natively, and MHTML can embed the logo —
+ * no extra dependency needed.
+ */
+export async function downloadCampaignWord(data: CampaignReportData) {
   const { campaign: c } = data;
+  const logo = await loadLogo();
+  const h2 = (t: string) =>
+    `<h2 style="color:${BRAND.dark};font-size:14pt;border-bottom:2px solid ${BRAND.accent};padding-bottom:3px;margin-top:20pt">${esc(t)}</h2>`;
   const html =
     `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">` +
     `<head><meta charset="utf-8"><title>Campaign Analytics Report</title>` +
-    `<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt}h1{font-size:20pt}h2{font-size:14pt;margin-top:18pt}</style></head><body>` +
-    `<h1>Campaign Analytics Report</h1>` +
-    `<p><b>Subject:</b> ${esc(c.subject)}<br><b>Template:</b> ${esc(c.templateName)}<br><b>Sent:</b> ${esc(fmtDate(c.sentAt))}<br><b>Generated:</b> ${esc(new Date().toLocaleString())}</p>` +
-    `<h2>Summary</h2>${table(["Metric", "Value"], summaryRows(c))}` +
+    `<style>body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:${BRAND.text}}</style></head><body>` +
+    `<table width="100%" cellspacing="0" cellpadding="10" style="background:${BRAND.dark};border-collapse:collapse"><tr>` +
+    (logo ? `<td width="56"><img src="cid:logo" width="44" height="44" alt="${BRAND.name}"></td>` : "") +
+    `<td><span style="color:#ffffff;font-size:20pt;font-weight:bold">${BRAND.name}</span><br><span style="color:#6ee7b7;font-size:9pt">${BRAND.tagline}</span></td>` +
+    `<td align="right"><span style="color:#ffffff;font-size:12pt;font-weight:bold">Campaign Analytics Report</span><br><span style="color:#a7f3d0;font-size:9pt">${esc(new Date().toLocaleDateString(undefined, { dateStyle: "long" }))}</span></td>` +
+    `</tr></table><div style="height:3px;background:${BRAND.accent}"></div>` +
+    `<h1 style="font-size:18pt;margin-bottom:2pt">${esc(c.subject)}</h1>` +
+    `<p style="color:${BRAND.muted};margin-top:0">Template: ${esc(c.templateName)} · Sent ${esc(fmtDate(c.sentAt))}</p>` +
+    h2("Summary") + table(["Metric", "Value"], summaryRows(c)) +
     breakdowns(data.analytics)
-      .map(([title, rows]) => `<h2>${esc(title)}</h2>` + (rows.length ? table(["Name", "Count"], rows) : "<p>No data</p>"))
+      .map(([title, rows]) => h2(title) + (rows.length ? table(["Name", "Count"], rows) : "<p>No data</p>"))
       .join("") +
-    `<h2>Hourly interactions</h2>${table(["Hour", "Opens", "Clicks"], data.timeSeries.map((t) => [t.time, t.opens, t.clicks]))}` +
+    h2("Hourly interactions") + table(["Hour", "Opens", "Clicks"], data.timeSeries.map((t) => [t.time, t.opens, t.clicks])) +
     (data.clickBreakdown.length
-      ? `<h2>Link performance</h2>${table(["Label", "Link", "Clicks", "Unique clicks"], data.clickBreakdown.map((l) => [l.label, l.url, l.clicks, l.uniqueClicks]))}`
+      ? h2("Link performance") + table(["Label", "Link", "Clicks", "Unique clicks"], data.clickBreakdown.map((l) => [l.label, l.url, l.clicks, l.uniqueClicks]))
       : "") +
-    `<h2>Recipients (${data.recipients.length})</h2>` +
+    h2(`Recipients (${data.recipients.length})`) +
     table(["Email", "Status", "Opens", "Clicks", "First opened"], data.recipients.map((r) => [r.email, r.status, r.openCount, r.clickCount, fmtDate(r.firstOpenedAt)])) +
+    `<p style="color:${BRAND.muted};font-size:9pt;margin-top:24pt;border-top:1px solid #cbd5e1;padding-top:6pt">Generated by ${BRAND.name} · ${esc(new Date().toLocaleString())}</p>` +
     `</body></html>`;
-  download(new Blob(["﻿", html], { type: "application/msword" }), `campaign-report-${safeName(c.subject)}.doc`);
+
+  const boundary = "----=_Postly_Report";
+  const parts = [
+    `MIME-Version: 1.0`,
+    `Content-Type: multipart/related; boundary="${boundary}"; type="text/html"`,
+    ``,
+    `--${boundary}`,
+    `Content-Type: text/html; charset="utf-8"`,
+    `Content-Transfer-Encoding: base64`,
+    ``,
+    btoa(unescape(encodeURIComponent(html))).replace(/(.{76})/g, "$1\r\n"),
+  ];
+  if (logo) {
+    parts.push(
+      `--${boundary}`,
+      `Content-Type: image/png`,
+      `Content-Transfer-Encoding: base64`,
+      `Content-ID: <logo>`,
+      ``,
+      logo.base64.replace(/(.{76})/g, "$1\r\n")
+    );
+  }
+  parts.push(`--${boundary}--`, ``);
+  download(new Blob([parts.join("\r\n")], { type: "application/msword" }), `campaign-report-${safeName(c.subject)}.doc`);
 }
