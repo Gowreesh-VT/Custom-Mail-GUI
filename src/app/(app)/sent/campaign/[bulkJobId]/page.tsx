@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BarChart2, CheckCircle2, ChevronRight, Cpu, Eye, Globe, Laptop, Layers, Link2, Loader2, Mail, Search, Send
+  BarChart2, CheckCircle2, ChevronRight, Cpu, Download, Eye, FileText, Globe, Laptop, Layers, Link2, Loader2, Mail, Search, Send
 } from "lucide-react";
 import { Area, AreaChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
+import { downloadCampaignPdf, downloadCampaignWord } from "@/lib/campaign-report";
 
 type Props = {
   params: Promise<{ bulkJobId: string }>;
@@ -76,6 +77,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
   const router = useRouter();
+  const [exporting, setExporting] = React.useState(false);
   const [allCampaigns, setAllCampaigns] = React.useState<Array<{ bulkJobId: string; subject: string; sentAt: string }>>([]);
 
   React.useEffect(() => {
@@ -103,6 +105,19 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   React.useEffect(() => {
     loadData();
   }, [loadData]);
+
+  const handleExport = async (kind: "pdf" | "word") => {
+    if (!data) return;
+    setExporting(true);
+    try {
+      if (kind === "pdf") await downloadCampaignPdf(data);
+      else downloadCampaignWord(data);
+    } catch (err: any) {
+      toast.error(`Export failed: ${err.message}`);
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const devicePieData = React.useMemo(() => {
     if (!data?.analytics?.deviceStats) return [];
@@ -204,6 +219,14 @@ export default function CampaignAnalyticsPage({ params }: Props) {
               <Layers className="h-3.5 w-3.5" />
               All Campaigns
             </Link>
+          </Button>
+          <Button variant="outline" size="sm" disabled={exporting} onClick={() => handleExport("pdf")} className="h-8 text-xs gap-1.5">
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+            PDF
+          </Button>
+          <Button variant="outline" size="sm" disabled={exporting} onClick={() => handleExport("word")} className="h-8 text-xs gap-1.5">
+            <FileText className="h-3.5 w-3.5" />
+            Word
           </Button>
           <Button variant="outline" size="sm" onClick={loadData} className="h-8 text-xs">
             Refresh
