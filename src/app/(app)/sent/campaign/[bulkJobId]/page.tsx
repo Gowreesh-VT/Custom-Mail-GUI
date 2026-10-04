@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  BarChart2, CheckCircle2, ChevronRight, Cpu, Download, Eye, FileText, Globe, Laptop, Layers, Link2, Loader2, Mail, Search, Send
+  BarChart2, CheckCircle2, ChevronDown, ChevronRight, Cpu, Download, Eye, FileText, Globe, Laptop, Layers, Link2, Loader2, Mail, Search, Send
 } from "lucide-react";
 import { Area, AreaChart, Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
@@ -78,6 +79,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   const [searchTerm, setSearchTerm] = React.useState("");
   const router = useRouter();
   const [exporting, setExporting] = React.useState(false);
+  const [exportOpen, setExportOpen] = React.useState(false);
   const [allCampaigns, setAllCampaigns] = React.useState<Array<{ bulkJobId: string; subject: string; sentAt: string }>>([]);
 
   React.useEffect(() => {
@@ -108,10 +110,11 @@ export default function CampaignAnalyticsPage({ params }: Props) {
 
   const handleExport = async (kind: "pdf" | "word") => {
     if (!data) return;
+    setExportOpen(false);
     setExporting(true);
     try {
       if (kind === "pdf") await downloadCampaignPdf(data);
-      else downloadCampaignWord(data);
+      else await downloadCampaignWord(data);
     } catch (err: any) {
       toast.error(`Export failed: ${err.message}`);
     } finally {
@@ -171,8 +174,8 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="space-y-1">
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Link href="/sent" className="inline-flex items-center gap-1 hover:text-foreground transition-colors">
               <Send className="h-3 w-3" /> Sent History
@@ -182,14 +185,8 @@ export default function CampaignAnalyticsPage({ params }: Props) {
               <Layers className="h-3 w-3" /> All Campaigns
             </Link>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight">Campaign Analytics</h1>
-          <p className="text-sm text-muted-foreground max-w-2xl truncate">
-            Subject: <strong className="text-foreground">{campaign.subject}</strong> · Template: <strong className="text-foreground">{campaign.templateName}</strong>
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
-          {allCampaigns.length > 1 && (
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2">
+            {allCampaigns.length > 1 && (
               <Select
                 value={bulkJobId}
                 onValueChange={(newId) => {
@@ -198,39 +195,59 @@ export default function CampaignAnalyticsPage({ params }: Props) {
                   }
                 }}
               >
-                <SelectTrigger className="h-8 text-xs max-w-[190px]">
-                  <SelectValue placeholder="Switch Campaign" />
+                <SelectTrigger className="h-8 w-[220px] text-xs">
+                  <SelectValue placeholder="Switch campaign" />
                 </SelectTrigger>
-                <SelectContent align="end" className="max-w-[280px]">
+                <SelectContent align="end" className="max-w-[320px]">
                   {allCampaigns.map((c) => (
                     <SelectItem key={c.bulkJobId} value={c.bulkJobId} className="text-xs">
                       <div className="truncate text-left">
-                        <span className="font-medium truncate block max-w-[200px]">{c.subject}</span>
+                        <span className="font-medium truncate block max-w-[260px]">{c.subject}</span>
                         <span className="text-[10px] text-muted-foreground font-mono">#{c.bulkJobId.slice(0, 8)}</span>
                       </div>
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            </div>
-          )}
-          <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1.5">
-            <Link href="/sent/campaign">
-              <Layers className="h-3.5 w-3.5" />
-              All Campaigns
-            </Link>
-          </Button>
-          <Button variant="outline" size="sm" disabled={exporting} onClick={() => handleExport("pdf")} className="h-8 text-xs gap-1.5">
-            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
-            PDF
-          </Button>
-          <Button variant="outline" size="sm" disabled={exporting} onClick={() => handleExport("word")} className="h-8 text-xs gap-1.5">
-            <FileText className="h-3.5 w-3.5" />
-            Word
-          </Button>
-          <Button variant="outline" size="sm" onClick={loadData} className="h-8 text-xs">
-            Refresh
-          </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={loadData} className="h-8 text-xs">
+              Refresh
+            </Button>
+            <Popover open={exportOpen} onOpenChange={setExportOpen}>
+              <PopoverTrigger asChild>
+                <Button size="sm" disabled={exporting} className="h-8 text-xs gap-1.5">
+                  {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                  Export
+                  <ChevronDown className="h-3.5 w-3.5 opacity-70" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" className="w-48 p-1">
+                <button
+                  type="button"
+                  onClick={() => handleExport("pdf")}
+                  className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <FileText className="h-4 w-4 text-red-400" /> PDF document
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleExport("word")}
+                  className="flex w-full items-center gap-2 rounded-sm px-2.5 py-2 text-left text-sm hover:bg-accent"
+                >
+                  <FileText className="h-4 w-4 text-blue-400" /> Word document
+                </button>
+              </PopoverContent>
+            </Popover>
+          </div>
+        </div>
+        <div className="space-y-1">
+          <h1 className="text-2xl font-bold tracking-tight">Campaign Analytics</h1>
+          <p className="text-sm text-muted-foreground">
+            <strong className="text-foreground">{campaign.subject}</strong>
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Template: <span className="text-foreground">{campaign.templateName}</span> · Sent {new Date(campaign.sentAt).toLocaleString()}
+          </p>
         </div>
       </div>
 
