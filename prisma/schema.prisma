@@ -198,6 +198,7 @@ model Email {
   // Relations
   events           EmailEvent[]
   clickEvents      ClickEvent[]
+  rsvp             RsvpResponse?
 
   @@index([userId])
   @@index([userId, status])
@@ -571,6 +572,25 @@ model ClickEvent {
   @@index([emailId])
   @@index([label])
   @@index([timestamp])
+}
+
+// ---------------------------------------------------------------------------
+// RSVP RESPONSE (one per email; latest answer wins)
+// ---------------------------------------------------------------------------
+
+model RsvpResponse {
+  id               String   @id @default(cuid())
+  emailId          String   @unique
+  email            Email    @relation(fields: [emailId], references: [id], onDelete: Cascade)
+  response         String                             // "yes" | "no" | "maybe"
+  note             String?
+  changeCount      Int      @default(0)
+  ip               String?
+  userAgent        String?
+  firstRespondedAt DateTime @default(now())
+  respondedAt      DateTime @default(now())
+
+  @@index([response])
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { jsonError } from "@/lib/utils";
+import { hasRsvpTags } from "@/lib/rsvp-shared";
 
 export const dynamic = "force-dynamic";
 
@@ -72,7 +73,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ bulk
     const emailIds = emails.map((e) => e.id);
 
     // Fetch all events
-    const [events, clickEvents] = await Promise.all([
+    const [events, clickEvents, rsvps] = await Promise.all([
       prisma.emailEvent.findMany({
         where: { emailId: { in: emailIds } },
         orderBy: { timestamp: "asc" }
@@ -80,8 +81,12 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ bulk
       prisma.clickEvent.findMany({
         where: { emailId: { in: emailIds } },
         orderBy: { timestamp: "asc" }
+      }),
+      prisma.rsvpResponse.findMany({
+        where: { emailId: { in: emailIds } }
       })
     ]);
+    const rsvpByEmail = new Map(rsvps.map((r) => [r.emailId, r]));
 
     // Aggregate overall metrics
     const totalSent = emails.length;
@@ -187,9 +192,25 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ bulk
         bothFailed: isBothFailed,
         primaryError,
         fallbackError,
-        errorMsg: e.errorMsg
+        errorMsg: e.errorMsg,
+        rsvp: rsvpByEmail.has(e.id)
+          ? {
+              response: rsvpByEmail.get(e.id)!.response,
+              note: rsvpByEmail.get(e.id)!.note,
+              respondedAt: rsvpByEmail.get(e.id)!.respondedAt.toISOString(),
+              changeCount: rsvpByEmail.get(e.id)!.changeCount
+            }
+          : null
       };
     });
+
+    const rsvpSummary = {
+      enabled: rsvps.length > 0 || emails.some((e) => hasRsvpTags(e.bodyHtml)),
+      yes: rsvps.filter((r) => r.response === "yes").length,
+      no: rsvps.filter((r) => r.response === "no").length,
+      maybe: rsvps.filter((r) => r.response === "maybe").length,
+      pending: emails.filter((e) => e.status === "sent" && !rsvpByEmail.has(e.id)).length
+    };
 
     return Response.json({
       success: true,
@@ -214,6 +235,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ bulk
         browserStats,
         osStats
       },
+      rsvpSummary,
       recipients
     });
   } catch (error: any) {

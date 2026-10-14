@@ -140,6 +140,11 @@ export function VariablesSection() {
                 <TableCell className="text-xs text-zinc-400">Rewrites destination URL to a click-tracking proxy redirect</TableCell>
                 <TableCell className="text-xs text-blue-400 font-mono">https://postly.../click/...</TableCell>
               </TableRow>
+              <TableRow className="border-zinc-800/60">
+                <TableCell className="font-mono text-xs text-primary">{"{{RSVP:yes|no|maybe}}"}</TableCell>
+                <TableCell className="text-xs text-zinc-400">Signed per-recipient RSVP link; the recipient confirms on a Postly page and the latest answer is recorded</TableCell>
+                <TableCell className="text-xs text-blue-400 font-mono">https://postly.../rsvp/...</TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </div>

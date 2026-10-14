@@ -10,7 +10,7 @@ import Color from "@tiptap/extension-color";
 import {
   Bold, Code, Heading1, Heading2, ImageIcon, Italic, LinkIcon, List,
   ListOrdered, QrCode, Quote, Redo, Strikethrough, UnderlineIcon, Undo,
-  MousePointerClick
+  MousePointerClick, CalendarCheck
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -19,6 +19,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { apiFetch } from "@/lib/client-api";
+import { RsvpButtonsDialog } from "@/components/rsvp-buttons-dialog";
 import { cn } from "@/lib/utils";
 
 
@@ -43,6 +44,7 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
   const [campaigns, setCampaigns] = useState<any[]>([]);
   const [qr, setQr] = useState({ campaignId: "", name: "", email: "", url: "", text: "", size: 200, align: "center", alt: "QR Code" });
   const [isExpanded, setIsExpanded] = useState(false);
+  const [rsvpDialog, setRsvpDialog] = useState(false);
 
   // Tracked Button state
   const [btnLabel, setBtnLabel] = useState("");
@@ -128,6 +130,14 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
                 </Button>
               </TooltipTrigger>
               <TooltipContent>Insert Tracked Button</TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button type="button" variant="ghost" size="icon" onClick={() => setRsvpDialog(true)}>
+                  <CalendarCheck className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Insert RSVP Buttons</TooltipContent>
             </Tooltip>
           </div>
           {isExpanded && (
@@ -271,6 +281,7 @@ export function RichEditor({ value, onChange }: { value: string; onChange: (valu
           ) : null}
         </DialogContent>
       </Dialog>
+      <RsvpButtonsDialog open={rsvpDialog} onOpenChange={setRsvpDialog} onInsert={(html) => editor?.chain().focus().insertContent(html).run()} />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { sendEmailWithFallback } from "@/lib/mailer";
+import { injectTracking } from "@/lib/tracking";
 import { prisma } from "@/lib/prisma";
 import { emailRecord } from "@/lib/records";
 import { toJson } from "@/lib/json-fields";
@@ -27,7 +28,7 @@ export async function POST(req: NextRequest) {
         bcc: email.bcc,
         replyTo: email.replyTo || undefined,
         subject: email.subject,
-        html: email.bodyHtml,
+        html: injectTracking(email.bodyHtml, email.id, email.trackingEnabled),
         attachments: email.attachments as any,
         emailId: email.id
       });

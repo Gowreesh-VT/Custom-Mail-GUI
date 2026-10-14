@@ -17,6 +17,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
 import { downloadCampaignPdf, downloadCampaignWord } from "@/lib/campaign-report";
+import { downloadRsvpCsv, RsvpBadge, RsvpSummaryCard, type RsvpInfo, type RsvpSummary } from "@/components/rsvp-results";
 
 type Props = {
   params: Promise<{ bulkJobId: string }>;
@@ -54,6 +55,7 @@ type CampaignAnalyticsData = {
     browserStats: Record<string, number>;
     osStats: Record<string, number>;
   };
+  rsvpSummary: RsvpSummary;
   recipients: Array<{
     id: string;
     email: string;
@@ -67,6 +69,7 @@ type CampaignAnalyticsData = {
     primaryError?: string | null;
     fallbackError?: string | null;
     errorMsg?: string | null;
+    rsvp: RsvpInfo;
   }>;
 };
 
@@ -77,6 +80,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   const [data, setData] = React.useState<CampaignAnalyticsData | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [searchTerm, setSearchTerm] = React.useState("");
+  const [rsvpFilter, setRsvpFilter] = React.useState("all");
   const router = useRouter();
   const [exporting, setExporting] = React.useState(false);
   const [exportOpen, setExportOpen] = React.useState(false);
@@ -146,9 +150,10 @@ export default function CampaignAnalyticsPage({ params }: Props) {
   const filteredRecipients = React.useMemo(() => {
     if (!data?.recipients) return [];
     return data.recipients.filter((r) =>
-      r.email.toLowerCase().includes(searchTerm.toLowerCase())
+      r.email.toLowerCase().includes(searchTerm.toLowerCase()) &&
+      (rsvpFilter === "all" || (rsvpFilter === "none" ? !r.rsvp : r.rsvp?.response === rsvpFilter))
     );
-  }, [data, searchTerm]);
+  }, [data, searchTerm, rsvpFilter]);
 
   if (loading) {
     return (
@@ -325,6 +330,13 @@ export default function CampaignAnalyticsPage({ params }: Props) {
         </Card>
       </div>
 
+      {data.rsvpSummary?.enabled && (
+        <RsvpSummaryCard
+          summary={data.rsvpSummary}
+          onExport={() => downloadRsvpCsv(`rsvp-${bulkJobId}.csv`, data.recipients.filter((r) => r.status === "sent"))}
+        />
+      )}
+
       {/* Hourly Timeline Area Chart */}
       <Card>
         <CardHeader>
@@ -460,7 +472,20 @@ export default function CampaignAnalyticsPage({ params }: Props) {
             <CardTitle>Recipients List</CardTitle>
             <CardDescription>Individual metrics and dispatch statuses for each recipient.</CardDescription>
           </div>
-          <div className="relative w-full sm:max-w-xs">
+          <div className="flex w-full flex-col gap-2 sm:max-w-md sm:flex-row">
+          {data.rsvpSummary?.enabled && (
+            <Select value={rsvpFilter} onValueChange={setRsvpFilter}>
+              <SelectTrigger className="h-9 sm:w-40"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All RSVPs</SelectItem>
+                <SelectItem value="yes">Attending</SelectItem>
+                <SelectItem value="no">Not attending</SelectItem>
+                <SelectItem value="maybe">Maybe</SelectItem>
+                <SelectItem value="none">No response</SelectItem>
+              </SelectContent>
+            </Select>
+          )}
+          <div className="relative w-full">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-9 h-9"
@@ -468,6 +493,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+          </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -479,6 +505,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
                 <TableHead className="text-right">Opens</TableHead>
                 <TableHead className="text-right">Clicks</TableHead>
                 <TableHead>First Opened</TableHead>
+                {data.rsvpSummary?.enabled && <TableHead>RSVP</TableHead>}
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -514,6 +541,11 @@ export default function CampaignAnalyticsPage({ params }: Props) {
                   <TableCell className="text-xs text-muted-foreground">
                     {rec.firstOpenedAt ? new Date(rec.firstOpenedAt).toLocaleString() : "Never"}
                   </TableCell>
+                  {data.rsvpSummary?.enabled && (
+                    <TableCell>
+                      <RsvpBadge rsvp={rec.rsvp} />
+                    </TableCell>
+                  )}
                   <TableCell className="text-right">
                     <Button asChild variant="ghost" size="icon" className="h-8 w-8">
                       <Link href={`/sent/${rec.id}`}><ChevronRight className="h-4 w-4" /></Link>
@@ -523,7 +555,7 @@ export default function CampaignAnalyticsPage({ params }: Props) {
               ))}
               {filteredRecipients.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-6 text-sm text-muted-foreground">
+                  <TableCell colSpan={data.rsvpSummary?.enabled ? 7 : 6} className="text-center py-6 text-sm text-muted-foreground">
                     No recipients matching filter found.
                   </TableCell>
                 </TableRow>

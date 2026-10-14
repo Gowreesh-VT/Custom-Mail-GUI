@@ -10,7 +10,7 @@ import { EditorState } from "@codemirror/state";
 import { EditorView } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import beautify from "js-beautify";
-import { ArrowLeft, CheckCircle2, Code2, Eye, Loader2, QrCode, RefreshCw, Save, Link2 } from "lucide-react";
+import { ArrowLeft, CalendarCheck, CheckCircle2, Code2, Eye, Loader2, QrCode, RefreshCw, Save, Link2 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/client-api";
+import { RsvpButtonsDialog } from "@/components/rsvp-buttons-dialog";
 import { detectTemplateFields, formatInvalidImagesMessage, validateExternalImageUrls } from "@/lib/template-html";
 import { generateTemplateThumbnail, replaceQrPlaceholdersForPreview, replaceTemplateValues, TEMPLATE_THUMBNAIL_PLACEHOLDER } from "@/lib/template-client";
 
@@ -108,6 +109,7 @@ export default function TemplateEditPage() {
   const [qrDialog, setQrDialog] = useState(false);
   const [qrPlaceholder, setQrPlaceholder] = useState({ name: "qr_code", width: 200, height: 200, alt: "QR Code" });
   const [trackedLinkDialog, setTrackedLinkDialog] = useState(false);
+  const [rsvpDialog, setRsvpDialog] = useState(false);
   const [trackedLabel, setTrackedLabel] = useState("");
   const [trackedUrl, setTrackedUrl] = useState("");
   const [trackedType, setTrackedType] = useState<"button" | "link">("button");
@@ -296,6 +298,7 @@ export default function TemplateEditPage() {
           <Button variant="outline" onClick={refreshFields}><RefreshCw className="h-4 w-4" />Detect Merge Fields</Button>
           <Button variant="outline" onClick={() => setQrDialog(true)}><QrCode className="h-4 w-4" />Insert QR Placeholder</Button>
           <Button variant="outline" onClick={() => { setTrackedLinkDialog(true); setTrackedLabel(""); setTrackedUrl(""); }}><Link2 className="h-4 w-4" />Insert Tracked Link</Button>
+          <Button variant="outline" onClick={() => setRsvpDialog(true)}><CalendarCheck className="h-4 w-4" />Insert RSVP Buttons</Button>
           <Button variant="outline" onClick={formatHtml} disabled={formatting}>
             {formatting ? (<Loader2 className="h-4 w-4 animate-spin" />) : (<Code2 className="h-4 w-4" />)}
             {formatting ? "Formatting..." : "Format HTML"}
@@ -437,6 +440,14 @@ export default function TemplateEditPage() {
           </div>
         </DialogContent>
       </Dialog>
+      <RsvpButtonsDialog
+        open={rsvpDialog}
+        onOpenChange={setRsvpDialog}
+        onInsert={(snippet) => {
+          setBodyHtml((current) => `${current}\n${snippet}`);
+          toast.success("RSVP buttons added to template");
+        }}
+      />
     </div>
   );
 }

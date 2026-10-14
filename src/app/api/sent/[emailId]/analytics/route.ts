@@ -2,6 +2,7 @@ import { type NextRequest } from "next/server";
 import { requireUser } from "@/lib/api";
 import { prisma } from "@/lib/prisma";
 import { jsonError } from "@/lib/utils";
+import { hasRsvpTags } from "@/lib/rsvp-shared";
 
 export const dynamic = "force-dynamic";
 
@@ -55,7 +56,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ emai
     const { emailId } = await params;
 
     const email = await prisma.email.findUnique({
-      where: { id: emailId }
+      where: { id: emailId },
+      include: { rsvp: true }
     });
 
     if (!email) {
@@ -137,6 +139,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ emai
         uaParsed: parseUserAgent(e.userAgent || "")
       })),
       clickBreakdown,
+      rsvp: email.rsvp
+        ? {
+            response: email.rsvp.response,
+            note: email.rsvp.note,
+            respondedAt: email.rsvp.respondedAt.toISOString(),
+            firstRespondedAt: email.rsvp.firstRespondedAt.toISOString(),
+            changeCount: email.rsvp.changeCount
+          }
+        : null,
+      rsvpEnabled: Boolean(email.rsvp) || hasRsvpTags(email.bodyHtml),
       analytics: {
         deviceStats,
         browserStats,

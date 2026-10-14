@@ -3,7 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import { formatDistance } from "date-fns";
-import { ArrowLeft, BarChart2, Calendar, Clock, Cpu, Eye, Globe, Laptop, Link2, Loader2 } from "lucide-react";
+import { ArrowLeft, BarChart2, Calendar, CalendarCheck, Clock, Cpu, Eye, Globe, Laptop, Link2, Loader2 } from "lucide-react";
 import { Cell, Legend, Line, LineChart, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { apiFetch } from "@/lib/client-api";
+import { RsvpBadge, type RsvpInfo } from "@/components/rsvp-results";
 
 type Props = {
   params: Promise<{ emailId: string }>;
@@ -48,6 +49,8 @@ type EmailAnalyticsData = {
     clicks: number;
     uniqueClicks: number;
   }>;
+  rsvp: (NonNullable<RsvpInfo> & { firstRespondedAt: string }) | null;
+  rsvpEnabled: boolean;
   analytics: {
     deviceStats: Record<string, number>;
     browserStats: Record<string, number>;
@@ -247,6 +250,28 @@ export default function SingleEmailPage({ params }: Props) {
               </CardContent>
             </Card>
           </div>
+
+          {data.rsvpEnabled && (
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
+                <CardTitle className="flex items-center gap-2 text-sm"><CalendarCheck className="h-4 w-4 text-primary" /> RSVP</CardTitle>
+                <RsvpBadge rsvp={data.rsvp} />
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                {data.rsvp ? (
+                  <>
+                    <p className="text-xs text-muted-foreground">
+                      Responded {new Date(data.rsvp.respondedAt).toLocaleString()}
+                      {data.rsvp.changeCount > 0 && ` · changed ${data.rsvp.changeCount}× since ${new Date(data.rsvp.firstRespondedAt).toLocaleString()}`}
+                    </p>
+                    {data.rsvp.note && <p className="rounded-md bg-muted/40 p-3 text-muted-foreground">&ldquo;{data.rsvp.note}&rdquo;</p>}
+                  </>
+                ) : (
+                  <p className="text-xs text-muted-foreground">The recipient hasn&apos;t confirmed a response yet.</p>
+                )}
+              </CardContent>
+            </Card>
+          )}
 
           {/* Cumulative timeline chart */}
           {timelineChartData.length > 0 ? (

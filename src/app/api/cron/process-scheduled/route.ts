@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { type NextRequest } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { sendEmailWithFallback } from "@/lib/mailer";
+import { injectTracking } from "@/lib/tracking";
 import { fromJson, toStringArray } from "@/lib/json-fields";
 import { logAudit } from "@/lib/audit";
 import type { AttachmentRecord } from "@/types/models";
@@ -94,6 +95,23 @@ async function processScheduled(req: NextRequest) {
       const attachments = fromJson<AttachmentRecord[]>(scheduled.attachments, []);
       const sentAt = new Date();
 
+      // Create the sent-log row first so tracked links and RSVP buttons can reference its id
+      const email = await prisma.email.create({
+        data: {
+          userId: scheduled.userId,
+          toAddresses: scheduled.toAddresses,
+          ccAddresses: scheduled.ccAddresses,
+          bccAddresses: scheduled.bccAddresses,
+          replyTo: scheduled.replyTo,
+          subject: scheduled.subject,
+          bodyHtml: scheduled.bodyHtml,
+          attachments: scheduled.attachments,
+          status: "sending",
+          isBulk: false,
+          sentAt
+        }
+      });
+
       const result = await sendEmailWithFallback({
         userId: scheduled.userId,
         to,
@@ -101,15 +119,18 @@ async function processScheduled(req: NextRequest) {
         bcc,
         replyTo: scheduled.replyTo ?? undefined,
         subject: scheduled.subject,
-        html: scheduled.bodyHtml,
+        html: injectTracking(scheduled.bodyHtml, email.id, true),
         attachments: attachments.map((attachment) => ({
           name: attachment.name,
           path: attachment.path,
           contentType: attachment.mimeType
-        }))
+        })),
+        emailId: email.id
       });
 
       if (!result.success) {
+        // Nothing went out; the scheduled email row records the failure
+        await prisma.email.delete({ where: { id: email.id } }).catch(() => {});
         throw new Error(result.error || "Failed to send scheduled email");
       }
 
@@ -121,21 +142,9 @@ async function processScheduled(req: NextRequest) {
 
       // Safely perform secondary logging so transient DB errors don't trigger duplicate re-sends
       try {
-        await prisma.email.create({
-          data: {
-            userId: scheduled.userId,
-            toAddresses: scheduled.toAddresses,
-            ccAddresses: scheduled.ccAddresses,
-            bccAddresses: scheduled.bccAddresses,
-            replyTo: scheduled.replyTo,
-            subject: scheduled.subject,
-            bodyHtml: scheduled.bodyHtml,
-            attachments: scheduled.attachments,
-            status: "sent",
-            isBulk: false,
-            usedFallbackSmtp: result.usedFallback,
-            sentAt
-          }
+        await prisma.email.update({
+          where: { id: email.id },
+          data: { status: "sent", usedFallbackSmtp: result.usedFallback }
         });
 
         await logAudit({
