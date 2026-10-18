@@ -166,6 +166,17 @@ worker/            Custom service worker logic (push, sync)
 
 ---
 
+## Troubleshooting
+
+- **Prisma client errors after pulling** — run `npx prisma generate` (or `npm install`) and `npx prisma migrate deploy`.
+- **Migrations hang on Neon** — make sure `DATABASE_URL_UNPOOLED` points at the direct (non-pgbouncer) host.
+- **"SMTP decryption failed" when sending** — `ENCRYPTION_SECRET` changed since the server was saved; re-enter the SMTP password.
+- **Tracking, QR or RSVP links point to localhost** — set `NEXT_PUBLIC_APP_URL` to your public URL and rebuild.
+- **Scheduled emails never send** — check the cron workflow's `CRON_SECRET` and `APP_URL` secrets and its run logs.
+- **Push notifications not arriving** — confirm the VAPID keys are set and the app is installed / notifications are allowed in the browser.
+
+---
+
 ## Contributing
 
 1. Create a branch for your change.
