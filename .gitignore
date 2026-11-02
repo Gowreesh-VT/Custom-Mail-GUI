@@ -47,4 +47,3 @@ next-env.d.ts
 # Logs and CSV files
 *.log
 *.csv
-config.bat
